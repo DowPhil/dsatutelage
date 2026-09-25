@@ -16,7 +16,7 @@ export const TERMS: TermsSection[] = [
     title: '1. Who we are',
     body: [
       'Distinguished Scholars Academy ("DSA", "we", "us") runs tutorials and an online portal for students preparing for WAEC, JAMB, Post-UTME, 100-level and preclinical examinations, as well as summer and after-school classes.',
-      'These terms cover our website (distinguishedscholarsacademy.com), the student portal, the community rooms, and our classes, whether online or in person. By creating an account you agree to them.',
+      'These terms cover our website (dsatutelage.com), the student portal, the community rooms, and our classes, whether online or in person. By creating an account you agree to them.',
     ],
   },
   {

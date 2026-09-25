@@ -767,7 +767,8 @@ export default function MyQuizzes() {
 
   const handleShare = (link: string, id: string) => {
     // Uses the 'link' slug from your API
-    const fullUrl = `https://distinguishedscholarsacademy.com/quiz/${link}`
+    // Whatever domain the admin is on is the domain students should get.
+    const fullUrl = `${window.location.origin}/q/${link}`
     navigator.clipboard.writeText(fullUrl)
     setCopiedId(id)
     toast.success('Student link copied!')
