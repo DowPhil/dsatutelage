@@ -30,12 +30,11 @@ export const PROGRAMMES = [
 ] as const
 
 /**
- * What a new student may pick at sign-up. Preclinical is not offered any
- * more (existing preclinical students keep theirs; the admin list above still
- * shows it). Summer Classes stays visible but cannot be chosen until the
- * next summer run opens.
+ * What a new student may pick at sign-up. Summer Classes stays visible but
+ * cannot be chosen until the next summer run opens. Preclinical is only for
+ * 200 Level (see programmesForClass).
  */
-export const SIGNUP_PROGRAMMES = PROGRAMMES.filter((p) => p !== 'Preclinical Tutorials')
+export const SIGNUP_PROGRAMMES = PROGRAMMES
 export const SIGNUP_PROGRAMMES_CLOSED: readonly string[] = ['Summer Classes']
 
 /**
@@ -52,11 +51,12 @@ export function programmesForClass(classLevel?: string): readonly string[] | nul
     return ['JAMB Tutorials', 'Post-UTME Tutorials', 'A(100) Level Tutorials']
   }
   if (cl.includes('100')) return ['A(100) Level Tutorials']
+  if (cl.includes('200')) return ['Preclinical Tutorials']
   return null
 }
 
-/** Classes shown but not open for new students right now. */
-export const CLASS_LEVELS_CLOSED: readonly string[] = ['200 Level']
+/** Classes shown but not open for new students right now (none at present). */
+export const CLASS_LEVELS_CLOSED: readonly string[] = []
 
 /** One line saying what this class may pick, or null when anything goes. */
 export function programmeHintForClass(classLevel?: string): string | null {

@@ -7,9 +7,7 @@ import {
   Zap,
   CalendarCheck,
   FileText,
-  ArrowRight,
 } from 'lucide-react'
-import Link from 'next/link'
 import FormulaBackdrop, { type Formula } from './FormulaBackdrop'
 
 const backdropFormulas: Formula[] = [
@@ -118,21 +116,6 @@ export default function WhyChooseDSA() {
           })}
         </div>
 
-        {/* CTA */}
-        <div
-          data-aos='zoom-in'
-          data-aos-duration='500'
-          data-aos-anchor-placement='top-bottom'
-          className='text-center mt-16'
-        >
-          <Link
-            href='#programs'
-            className='inline-flex items-center gap-2 px-10 py-4 rounded-xl font-bold text-white bg-[#002EFF] hover:bg-[#FCB900] hover:text-black shadow-lg hover:shadow-xl transition-all duration-300 active:scale-95'
-          >
-            Explore Programs
-            <ArrowRight size={20} />
-          </Link>
-        </div>
       </div>
     </section>
   )
