@@ -59,7 +59,11 @@ export function useAnnouncementsUnread(active: boolean, token?: string): number 
 
   useEffect(() => {
     refresh()
-    const id = setInterval(refresh, 20000)
+    // Every open dashboard tab runs this. During a class that is the whole
+    // class at once, so once a minute, and never while the tab is hidden.
+    const id = setInterval(() => {
+      if (!document.hidden) refresh()
+    }, 60000)
     const onFocus = () => refresh()
     window.addEventListener('focus', onFocus)
     return () => {
