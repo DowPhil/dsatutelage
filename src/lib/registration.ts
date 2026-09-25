@@ -38,6 +38,39 @@ export const PROGRAMMES = [
 export const SIGNUP_PROGRAMMES = PROGRAMMES.filter((p) => p !== 'Preclinical Tutorials')
 export const SIGNUP_PROGRAMMES_CLOSED: readonly string[] = ['Summer Classes']
 
+/**
+ * Which programmes a class may take, or null when the class is not limited.
+ * SS1 and SS2 are not exam candidates yet, SS3 sits WAEC and JAMB, an
+ * aspirant has left school and is on JAMB and Post-UTME. The backend applies
+ * the same rule (utils/audienceHelpers.js programmesForClass).
+ */
+export function programmesForClass(classLevel?: string): readonly string[] | null {
+  const cl = (classLevel || '').toLowerCase()
+  if (cl.includes('ss1') || cl.includes('ss2')) return ['After-School Classes']
+  if (cl.includes('ss3')) return ['WAEC Tutorials', 'JAMB Tutorials']
+  if (cl.includes('jambite') || cl.includes('aspirant')) {
+    return ['JAMB Tutorials', 'Post-UTME Tutorials', 'A(100) Level Tutorials']
+  }
+  if (cl.includes('100')) return ['A(100) Level Tutorials']
+  return null
+}
+
+/** Classes shown but not open for new students right now. */
+export const CLASS_LEVELS_CLOSED: readonly string[] = ['200 Level']
+
+/** One line saying what this class may pick, or null when anything goes. */
+export function programmeHintForClass(classLevel?: string): string | null {
+  const allowed = programmesForClass(classLevel)
+  if (!allowed) return null
+  const cl = (classLevel || '').toLowerCase()
+  const label = cl.includes('ss') || cl.includes('level') ? classLevel : 'Aspirants'
+  if (allowed.length === 1) return `${label} students join the ${allowed[0]}.`
+  const list = allowed.length === 2
+    ? allowed.join(' and ')
+    : `${allowed.slice(0, -1).join(', ')} and ${allowed[allowed.length - 1]}`
+  return `${label} students choose from ${list}.`
+}
+
 export const NIGERIAN_STATES = [
   'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue',
   'Borno', 'Cross River', 'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu',

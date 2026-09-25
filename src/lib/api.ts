@@ -210,6 +210,22 @@ export function isBackendUnreachable(err: unknown): boolean {
   )
 }
 
+/** A student's request to move class / programme, as the API returns it. */
+export interface ChangeRequest {
+  id: string
+  userId: string
+  student?: { id: string; fullname: string; email: string; studentId?: string }
+  current: { currentLevel: string; programmes: string[]; department: string; examTrack: string }
+  requested: { currentLevel: string; programmes: string[]; department: string; examTrack: string }
+  note: string
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  decisionNote: string
+  decidedAt: string | null
+  droppedEnrollments: number
+  createdAt: string
+  updatedAt: string
+}
+
 export const dsaApi = {
   auth: {
     /**
@@ -332,6 +348,39 @@ export const dsaApi = {
         headers: getHeaders(token),
         body: JSON.stringify(payload),
       }).then((r) => handleResponse<{ success?: boolean; token?: string; message?: string }>(r)),
+
+    // Moving class or programme is a request an admin approves, not an edit.
+    changeRequest: {
+      // GET /auth/change-request — the student's latest request, or null.
+      get: (token?: string) =>
+        fetch(`${BASE_URL}/auth/change-request`, { headers: getHeaders(token) })
+          .then((r) => handleResponse<{ data?: ChangeRequest | null }>(r))
+          .then((res) => res?.data ?? null),
+      // POST /auth/change-request — password-confirmed; replaces any pending one.
+      submit: (
+        payload: {
+          currentLevel: string
+          programmes: string[]
+          department?: string
+          password: string
+          note?: string
+        },
+        token?: string,
+      ) =>
+        fetch(`${BASE_URL}/auth/change-request`, {
+          method: 'POST',
+          headers: getHeaders(token),
+          body: JSON.stringify(payload),
+        })
+          .then((r) => handleResponse<{ data?: ChangeRequest }>(r))
+          .then((res) => res?.data ?? null),
+      // DELETE /auth/change-request — take back a pending request.
+      withdraw: (token?: string) =>
+        fetch(`${BASE_URL}/auth/change-request`, {
+          method: 'DELETE',
+          headers: getHeaders(token),
+        }).then((r) => handleResponse<{ data?: { withdrawn: number } }>(r)),
+    },
   },
 
   quizzes: {

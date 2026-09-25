@@ -29,6 +29,7 @@ import { uploadToCloudinary, cloudinaryConfigured } from '@/lib/cloudinary'
 import type { User as DsaUser } from '@/lib/types'
 import { EXAM_TRACKS, type ExamTrack } from '@/lib/studentProfile'
 import { examTracksForProgrammes } from '@/lib/registration'
+import ClassChangeCard from '@/components/dashboard/ClassChangeCard'
 
 export default function SettingsView() {
   const [activeTab, setActiveTab] = useState('Account Info')
@@ -443,6 +444,8 @@ export default function SettingsView() {
               </div>
             </Card>
           )}
+
+          {activeTab === 'Account Info' && role === 'student' && <ClassChangeCard />}
 
           {activeTab === 'Security & Password' && <PasswordCard />}
 

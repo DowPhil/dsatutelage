@@ -1027,6 +1027,7 @@ import {
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { adminApi, type AdminUserListItem, type OtpDelivery } from '@/lib/admin-api'
+import ChangeRequestsPanel from './ChangeRequestsPanel'
 import {
   PROGRAMMES,
   CLASS_LEVELS,
@@ -1409,7 +1410,7 @@ export default function StudentRoster() {
           />
           <input
             type='text'
-            placeholder='Search by name, email, or student ID...'
+            placeholder='Name, email or student ID'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className='w-full h-10 pl-9 pr-4 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#002EFF] transition-all'
@@ -1422,6 +1423,13 @@ export default function StudentRoster() {
           Search
         </button>
       </form>
+
+      {/* Students asking to move class / programme — approve here */}
+      <ChangeRequestsPanel
+        onDecided={() =>
+          fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter)
+        }
+      />
 
       {/* Filters — by programme and by class/level */}
       <div className='flex flex-wrap items-center gap-2'>

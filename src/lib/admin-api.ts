@@ -370,6 +370,21 @@ export interface OtpDelivery {
   note: string | null
 }
 
+/** A student's request to move class / programme, awaiting an admin. */
+export interface ChangeRequestRow {
+  id: string
+  userId: string
+  student?: { id: string; fullname: string; email: string; studentId?: string }
+  current: { currentLevel: string; programmes: string[]; department: string; examTrack: string }
+  requested: { currentLevel: string; programmes: string[]; department: string; examTrack: string }
+  note: string
+  status: 'pending' | 'approved' | 'rejected' | 'withdrawn'
+  decisionNote: string
+  decidedAt: string | null
+  droppedEnrollments: number
+  createdAt: string
+}
+
 export const adminApi = {
   // ==========================================
   // AUTHENTICATION
@@ -461,6 +476,26 @@ export const adminApi = {
     adminFetch<{ success: boolean; data: { total: number; sent: number; remaining: number; failed: { email: string; reason: string }[] } }>(
       '/api/admin/users/resend-activation',
       { method: 'POST', body: '{}' },
+    ),
+
+  /**
+   * Students' requests to move class / programme.
+   * Endpoint: GET /api/admin/change-requests?status=pending|all
+   */
+  listChangeRequests: (status: 'pending' | 'all' = 'pending') =>
+    adminFetch<{ success: boolean; count: number; data: ChangeRequestRow[] }>(
+      `/api/admin/change-requests?status=${status}`,
+    ),
+
+  /**
+   * Approve (applies the change and drops courses the new class cannot see)
+   * or reject (with a note the student sees).
+   * Endpoint: PATCH /api/admin/change-requests/{id}
+   */
+  decideChangeRequest: (id: string, action: 'approve' | 'reject', note?: string) =>
+    adminFetch<{ success: boolean; data: ChangeRequestRow }>(
+      `/api/admin/change-requests/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify({ action, note: note || '' }) },
     ),
 
   /**
