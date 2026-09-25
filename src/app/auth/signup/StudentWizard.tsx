@@ -49,15 +49,31 @@ const DEPARTMENTS = [
   { value: 'commercial', label: 'Commercial' },
 ] as const
 
-/** SS1 and SS2 students are not yet exam candidates: After-School only. */
-function isJuniorClass(classLevel?: string): boolean {
+/**
+ * Which programmes each class may take. SS1 and SS2 are not exam candidates
+ * yet, SS3 sits WAEC and JAMB, an aspirant has left school and is on JAMB
+ * and Post-UTME. The university levels are not limited.
+ */
+function allowedProgrammes(classLevel?: string): readonly string[] | null {
   const cl = (classLevel || '').toLowerCase()
-  return cl.includes('ss1') || cl.includes('ss2')
+  if (cl.includes('ss1') || cl.includes('ss2')) return ['After-School Classes']
+  if (cl.includes('ss3')) return ['WAEC Tutorials', 'JAMB Tutorials']
+  if (cl.includes('jambite') || cl.includes('aspirant')) return ['JAMB Tutorials', 'Post-UTME Tutorials']
+  return null
 }
-const JUNIOR_PROGRAMME = 'After-School Classes'
 /** True when this class level may pick this programme. */
 function programmeAllowed(classLevel: string | undefined, p: string): boolean {
-  return !isJuniorClass(classLevel) || p === JUNIOR_PROGRAMME
+  const allowed = allowedProgrammes(classLevel)
+  return !allowed || allowed.includes(p)
+}
+/** One line under the programme list saying what this class may pick. */
+function programmeHint(classLevel?: string): string | null {
+  const allowed = allowedProgrammes(classLevel)
+  if (!allowed) return null
+  const label = (classLevel || '').toLowerCase().includes('ss') ? classLevel : 'Aspirants'
+  return allowed.length === 1
+    ? `${label} students join the ${allowed[0]}.`
+    : `${label} students choose from ${allowed.join(' and ')}.`
 }
 
 /** Science/Art/Commercial applies to SS1–SS3 and the WAEC/JAMB/Post-UTME tracks. */
@@ -102,7 +118,7 @@ const schema = z
     path: ['confirmPassword'],
   })
   .refine((d) => d.programmes.every((p) => programmeAllowed(d.classLevel, p)), {
-    message: 'SS1 and SS2 students can only join the After-School Classes',
+    message: 'One of these programmes is not offered for your class',
     path: ['programmes'],
   })
   .refine((d) => !needsDepartment(d.classLevel, d.programmes) || !!d.department, {
@@ -150,13 +166,11 @@ export default function StudentWizard() {
   const department = watch('department')
   const acceptTerms = watch('acceptTerms')
 
-  const next = async () => {
+  // Page 2 opens freely; every field is checked once, when Register is pressed.
+  const next = () => {
     setError('')
-    const ok = await trigger(PAGE_FIELDS[1], { shouldFocus: true })
-    if (ok) {
-      setStep(2)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-    }
+    setStep(2)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
   const back = () => {
     setError('')
@@ -195,9 +209,9 @@ export default function StudentWizard() {
     reader.readAsDataURL(file)
   }
 
-  // Moving to SS1/SS2 drops any programme that class may not take.
+  // Changing class drops any programme that class may not take.
   useEffect(() => {
-    if (!isJuniorClass(classLevel)) return
+    if (!allowedProgrammes(classLevel)) return
     const curr = getValues('programmes')
     const kept = curr.filter((p) => programmeAllowed(classLevel, p))
     if (kept.length !== curr.length) setValue('programmes', kept, { shouldValidate: true })
@@ -219,6 +233,13 @@ export default function StudentWizard() {
     setError('')
     const ok = await trigger()
     if (!ok) {
+      // Errors on the first page are out of sight from here: go back to them.
+      const errs = formState.errors as Record<string, unknown>
+      const onPageOne = PAGE_FIELDS[1].some((f) => errs[f])
+      if (onPageOne && step !== 1) {
+        setStep(1)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
       setError('Please review the form — some fields need attention.')
       return
     }
@@ -543,16 +564,15 @@ export default function StudentWizard() {
                         <span className={cn('text-[11px] font-bold', active ? 'text-[#002EFF]' : 'text-slate-600')}>
                           {p}
                           {closed && <span className='ml-1 font-medium text-slate-400'>· not open yet</span>}
-                          {!closed && notForClass && <span className='ml-1 font-medium text-slate-400'>· SS3 and above</span>}
+                          {!closed && notForClass && <span className='ml-1 font-medium text-slate-400'>· not for your class</span>}
                         </span>
                       </div>
                     )
                   })}
                 </div>
                 <p className='text-[10px] font-bold text-slate-400'>
-                  {isJuniorClass(classLevel)
-                    ? 'SS1 and SS2 students join the After-School Classes.'
-                    : `${programmes.length}/2 selected${programmes.length >= 2 ? ' — maximum reached' : ''}`}
+                  {programmeHint(classLevel) ??
+                    `${programmes.length}/2 selected${programmes.length >= 2 ? ' — maximum reached' : ''}`}
                 </p>
                 {errors.programmes && <p className='text-[10px] font-bold text-rose-500'>{errors.programmes.message as string}</p>}
               </div>

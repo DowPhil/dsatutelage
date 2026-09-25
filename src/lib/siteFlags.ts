@@ -7,7 +7,7 @@
  * stuck pending accounts are cleared, so no new student registers into the
  * same trap. Flip to false and push to reopen.
  */
-export const REGISTRATION_PAUSED = true
+export const REGISTRATION_PAUSED = false
 
 /** Shown on the paused page. Keep it to one short sentence. */
 export const REGISTRATION_PAUSED_NOTE =
