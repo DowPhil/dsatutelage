@@ -29,6 +29,15 @@ export const PROGRAMMES = [
   'Preclinical Tutorials',
 ] as const
 
+/**
+ * What a new student may pick at sign-up. Preclinical is not offered any
+ * more (existing preclinical students keep theirs; the admin list above still
+ * shows it). Summer Classes stays visible but cannot be chosen until the
+ * next summer run opens.
+ */
+export const SIGNUP_PROGRAMMES = PROGRAMMES.filter((p) => p !== 'Preclinical Tutorials')
+export const SIGNUP_PROGRAMMES_CLOSED: readonly string[] = ['Summer Classes']
+
 export const NIGERIAN_STATES = [
   'Abia', 'Adamawa', 'Akwa Ibom', 'Anambra', 'Bauchi', 'Bayelsa', 'Benue',
   'Borno', 'Cross River', 'Delta', 'Ebonyi', 'Edo', 'Ekiti', 'Enugu',

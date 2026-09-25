@@ -5,7 +5,7 @@
 // at the door. The Terms & Conditions are a checkbox on page two, with the
 // full text one tap away in a pop-up for anyone who wants to read it.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
@@ -34,7 +34,8 @@ import {
   GENDERS,
   CLASS_LEVELS,
   LEARNING_MODES,
-  PROGRAMMES,
+  SIGNUP_PROGRAMMES,
+  SIGNUP_PROGRAMMES_CLOSED,
   NIGERIAN_STATES,
   deriveTrackFromProgrammes,
   usernameFromEmail,
@@ -47,6 +48,17 @@ const DEPARTMENTS = [
   { value: 'art', label: 'Art' },
   { value: 'commercial', label: 'Commercial' },
 ] as const
+
+/** SS1 and SS2 students are not yet exam candidates: After-School only. */
+function isJuniorClass(classLevel?: string): boolean {
+  const cl = (classLevel || '').toLowerCase()
+  return cl.includes('ss1') || cl.includes('ss2')
+}
+const JUNIOR_PROGRAMME = 'After-School Classes'
+/** True when this class level may pick this programme. */
+function programmeAllowed(classLevel: string | undefined, p: string): boolean {
+  return !isJuniorClass(classLevel) || p === JUNIOR_PROGRAMME
+}
 
 /** Science/Art/Commercial applies to SS1–SS3 and the WAEC/JAMB/Post-UTME tracks. */
 function needsDepartment(classLevel?: string, programmes?: string[]): boolean {
@@ -88,6 +100,10 @@ const schema = z
   .refine((d) => d.password === d.confirmPassword, {
     message: 'Passwords do not match',
     path: ['confirmPassword'],
+  })
+  .refine((d) => d.programmes.every((p) => programmeAllowed(d.classLevel, p)), {
+    message: 'SS1 and SS2 students can only join the After-School Classes',
+    path: ['programmes'],
   })
   .refine((d) => !needsDepartment(d.classLevel, d.programmes) || !!d.department, {
     message: 'Select your department',
@@ -178,6 +194,14 @@ export default function StudentWizard() {
     reader.onloadend = () => setValue('passport', reader.result as string)
     reader.readAsDataURL(file)
   }
+
+  // Moving to SS1/SS2 drops any programme that class may not take.
+  useEffect(() => {
+    if (!isJuniorClass(classLevel)) return
+    const curr = getValues('programmes')
+    const kept = curr.filter((p) => programmeAllowed(classLevel, p))
+    if (kept.length !== curr.length) setValue('programmes', kept, { shouldValidate: true })
+  }, [classLevel, getValues, setValue])
 
   // Toggle a programme, enforcing the 1–2 selection cap.
   const toggleProgramme = (p: string) => {
@@ -491,18 +515,24 @@ export default function StudentWizard() {
               <div className='space-y-1.5'>
                 <label className='text-[10px] font-bold text-slate-500 uppercase'>Programme(s) * <span className='normal-case font-medium text-slate-400'>— choose 1 or 2</span></label>
                 <div className='grid grid-cols-1 sm:grid-cols-2 gap-2'>
-                  {PROGRAMMES.map((p) => {
+                  {SIGNUP_PROGRAMMES.map((p) => {
                     const active = programmes.includes(p)
+                    const closed = SIGNUP_PROGRAMMES_CLOSED.includes(p)
+                    const notForClass = !programmeAllowed(classLevel, p)
                     const atMax = programmes.length >= 2 && !active
+                    const blocked = closed || notForClass || atMax
                     return (
                       <div
                         key={p}
-                        onClick={() => toggleProgramme(p)}
+                        role='checkbox'
+                        aria-checked={active}
+                        aria-disabled={blocked}
+                        onClick={() => { if (!blocked) toggleProgramme(p) }}
                         className={cn(
                           'p-3 rounded-xl border flex items-center gap-2 transition-all',
                           active
                             ? 'bg-blue-50 border-[#002EFF] cursor-pointer'
-                            : atMax
+                            : blocked
                               ? 'bg-slate-50 border-slate-100 opacity-50 cursor-not-allowed'
                               : 'bg-white border-slate-100 hover:bg-slate-50 cursor-pointer',
                         )}
@@ -510,13 +540,19 @@ export default function StudentWizard() {
                         <div className={cn('h-4 w-4 rounded flex items-center justify-center shrink-0', active ? 'bg-[#002EFF] text-white' : 'border border-slate-300')}>
                           {active && <CheckCircle2 size={12} />}
                         </div>
-                        <span className={cn('text-[11px] font-bold', active ? 'text-[#002EFF]' : 'text-slate-600')}>{p}</span>
+                        <span className={cn('text-[11px] font-bold', active ? 'text-[#002EFF]' : 'text-slate-600')}>
+                          {p}
+                          {closed && <span className='ml-1 font-medium text-slate-400'>· not open yet</span>}
+                          {!closed && notForClass && <span className='ml-1 font-medium text-slate-400'>· SS3 and above</span>}
+                        </span>
                       </div>
                     )
                   })}
                 </div>
                 <p className='text-[10px] font-bold text-slate-400'>
-                  {programmes.length}/2 selected{programmes.length >= 2 && ' — maximum reached'}
+                  {isJuniorClass(classLevel)
+                    ? 'SS1 and SS2 students join the After-School Classes.'
+                    : `${programmes.length}/2 selected${programmes.length >= 2 ? ' — maximum reached' : ''}`}
                 </p>
                 {errors.programmes && <p className='text-[10px] font-bold text-rose-500'>{errors.programmes.message as string}</p>}
               </div>
