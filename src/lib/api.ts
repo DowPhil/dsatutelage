@@ -210,6 +210,30 @@ export function isBackendUnreachable(err: unknown): boolean {
   )
 }
 
+/** My latest offline payment and where my access stands (GET /payments/offline/mine). */
+export interface PaymentStatus {
+  payment: {
+    id: string
+    planId: string
+    planName?: string
+    amount: number
+    months?: number
+    method: string
+    reference?: string
+    proofUrl: string
+    status: 'pending' | 'approved' | 'rejected'
+    reviewNote?: string
+    createdAt: string
+    updatedAt: string
+  } | null
+  access: {
+    level: 'free' | 'portal' | 'tutorial'
+    paymentStatus: string
+    expiresAt: string | null
+    verifiedAt: string | null
+  } | null
+}
+
 /** A student's request to move class / programme, as the API returns it. */
 export interface ChangeRequest {
   id: string
@@ -1941,6 +1965,12 @@ export const dsaApi = {
         .then((r) => handleResponse<{ data?: unknown }>(r))
         .then((r) => (r as { data?: unknown }).data ?? r),
 
+    // GET /payments/offline/mine — my latest receipt and where my access stands.
+    mine: (token?: string) =>
+      fetch(`${BASE_URL}/payments/offline/mine`, { headers: getHeaders(token) })
+        .then((r) => handleResponse<{ data?: PaymentStatus }>(r))
+        .then((r) => (r as { data?: PaymentStatus }).data ?? null),
+
     // GET /admin/payments/offline — the review queue (admin).
     offlineQueue: (token?: string) =>
       fetch(`${BASE_URL}/admin/payments/offline`, { headers: getHeaders(token) })
@@ -1952,11 +1982,11 @@ export const dsaApi = {
         .then((res) => (Array.isArray(res) ? res : (res?.data ?? []))),
 
     // PATCH /admin/payments/offline/:id — { decision: 'approve' | 'reject' }.
-    review: (id: string, decision: 'approve' | 'reject', token?: string) =>
+    review: (id: string, decision: 'approve' | 'reject', token?: string, note?: string) =>
       fetch(`${BASE_URL}/admin/payments/offline/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         headers: getHeaders(token),
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify({ decision, note: note || '' }),
       })
         .then((r) => handleResponse<{ data?: unknown }>(r))
         .then((r) => (r as { data?: unknown }).data ?? r),

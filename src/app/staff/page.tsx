@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import SupportTickets from '@/app/admin/components/SupportTickets'
+import { OfflineQueueSection } from '@/app/admin/components/PaymentsAdmin'
 import QuizBuilder from '@/app/admin/components/QuizBuilder'
 import QuestionBank from '@/components/dashboard/QuestionBank'
 import { Button } from '@/components/ui/button'
@@ -64,12 +65,6 @@ function readPayments(): Record<string, ManualPayment> {
   } catch {
     return {}
   }
-}
-function savePayment(key: string, p: ManualPayment | null) {
-  const all = readPayments()
-  if (p) all[key] = p
-  else delete all[key]
-  localStorage.setItem(PAY_KEY, JSON.stringify(all))
 }
 
 export default function StaffDashboard() {
@@ -168,7 +163,17 @@ export default function StaffDashboard() {
       )}
 
       {view === 'payments' && (
-        <PaymentsPanel canVerify={can('payments.verify')} staffName={firstName} />
+        <div className='space-y-4'>
+          <div>
+            <h2 className='text-2xl font-black text-[#002EFF] italic uppercase'>Payments</h2>
+            <p className='text-[11px] font-bold text-slate-400'>
+              {can('payments.verify')
+                ? 'Receipts students uploaded. Confirm the transfer to keep their access, or reject it with a reason.'
+                : 'Receipts students uploaded, read only. Ask an admin for payments.verify to confirm them.'}
+            </p>
+          </div>
+          <OfflineQueueSection token={getToken() ?? undefined} canReview={can('payments.verify')} />
+        </div>
       )}
 
       {view === 'timetable' &&
@@ -297,176 +302,6 @@ function OverviewPanel({
 }
 
 /* ---------------------------------------------------------------- */
-function PaymentsPanel({
-  canVerify,
-  staffName,
-}: {
-  canVerify: boolean
-  staffName: string
-}) {
-  const [students, setStudents] = useState<StoredStudent[]>([])
-  const [paid, setPaid] = useState<Record<string, ManualPayment>>({})
-  const [target, setTarget] = useState<StoredStudent | null>(null)
-  const [method, setMethod] = useState('Bank Transfer')
-  const [reference, setReference] = useState('')
-
-  const load = () => {
-    setStudents(getStudents())
-    setPaid(readPayments())
-  }
-  useEffect(load, [])
-
-  const confirm = () => {
-    if (!target) return
-    savePayment(target.key, {
-      method,
-      reference: reference.trim(),
-      by: staffName,
-      at: new Date().toISOString(),
-    })
-    setTarget(null)
-    setReference('')
-    setMethod('Bank Transfer')
-    load()
-  }
-
-  return (
-    <div className='space-y-4'>
-      <div>
-        <h2 className='text-2xl font-black text-[#002EFF] italic uppercase'>
-          Manual Payments
-        </h2>
-        <p className='text-[11px] font-bold text-slate-400'>
-          {canVerify
-            ? 'Verify offline payments (bank transfer / cash) so the student’s portal is activated.'
-            : 'Read-only view of payment status.'}
-        </p>
-      </div>
-
-      <Card className='rounded-3xl border-none shadow-sm bg-white overflow-hidden'>
-        <div className='grid grid-cols-12 px-5 py-3 bg-slate-50 text-[9px] font-black uppercase text-gray-400'>
-          <span className='col-span-4'>Student</span>
-          <span className='col-span-2'>Track</span>
-          <span className='col-span-3'>Status</span>
-          <span className='col-span-3 text-right'>Action</span>
-        </div>
-        {students.map((s) => {
-          const p = paid[s.key]
-          return (
-            <div
-              key={s.key}
-              className='grid grid-cols-12 items-center px-5 py-4 border-t border-slate-50'
-            >
-              <span className='col-span-4 text-xs font-black text-gray-800'>
-                {s.name}
-              </span>
-              <span className='col-span-2'>
-                <Badge className='bg-blue-50 text-[#002EFF] text-[8px] font-black'>
-                  {s.track}
-                </Badge>
-              </span>
-              <span className='col-span-3'>
-                {p ? (
-                  <span className='inline-flex items-center gap-1 text-[10px] font-black text-emerald-600'>
-                    <CheckCircle2 size={12} /> Paid · {p.method}
-                  </span>
-                ) : (
-                  <span className='inline-flex items-center gap-1 text-[10px] font-black text-amber-600'>
-                    <Clock size={12} /> Awaiting
-                  </span>
-                )}
-              </span>
-              <span className='col-span-3 text-right'>
-                {p ? (
-                  <span className='text-[9px] font-bold text-slate-400'>
-                    by {p.by}
-                  </span>
-                ) : canVerify ? (
-                  <Button
-                    size='sm'
-                    onClick={() => setTarget(s)}
-                    className='bg-[#002EFF] text-white font-black text-[9px] rounded-lg h-8'
-                  >
-                    Verify
-                  </Button>
-                ) : (
-                  <span className='inline-flex items-center gap-1 text-[9px] font-bold text-slate-300'>
-                    <Lock size={10} /> No access
-                  </span>
-                )}
-              </span>
-            </div>
-          )
-        })}
-        {students.length === 0 && (
-          <p className='px-5 py-10 text-center text-xs font-bold text-slate-400'>
-            No students yet.
-          </p>
-        )}
-      </Card>
-
-      {/* Verify modal */}
-      {target && (
-        <div className='fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm'>
-          <div className='w-full max-w-sm bg-white rounded-3xl shadow-2xl p-6 space-y-4'>
-            <div>
-              <h3 className='text-sm font-black text-slate-900 uppercase'>
-                Verify Payment
-              </h3>
-              <p className='text-[11px] font-bold text-slate-400'>
-                {target.name} — confirm the payment you received
-              </p>
-            </div>
-            <label className='space-y-1.5 block'>
-              <span className='text-[10px] font-black uppercase tracking-widest text-slate-400'>
-                Method
-              </span>
-              <select
-                value={method}
-                onChange={(e) => setMethod(e.target.value)}
-                className='w-full h-11 px-3 rounded-lg bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-bold'
-              >
-                <option>Bank Transfer</option>
-                <option>Cash</option>
-                <option>POS</option>
-                <option>Other</option>
-              </select>
-            </label>
-            <label className='space-y-1.5 block'>
-              <span className='text-[10px] font-black uppercase tracking-widest text-slate-400'>
-                Reference (optional)
-              </span>
-              <input
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                placeholder='e.g. teller / transfer ref'
-                className='w-full h-11 px-3 rounded-lg bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-medium'
-              />
-            </label>
-            <div className='flex gap-2 pt-1'>
-              <Button
-                onClick={() => setTarget(null)}
-                variant='ghost'
-                className='flex-1 rounded-xl font-black text-[10px] uppercase text-slate-500'
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={confirm}
-                className='flex-1 bg-[#002EFF] text-white rounded-xl font-black text-[10px] uppercase'
-              >
-                Mark Paid
-              </Button>
-            </div>
-            <p className='text-[9px] font-medium text-slate-400 text-center'>
-              Backend equivalent: <code>POST /api/payments/manual</code>
-            </p>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 /* ---------------------------------------------------------------- */
 const sstr = (v: unknown) => (v == null ? '' : String(v))

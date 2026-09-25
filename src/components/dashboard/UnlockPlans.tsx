@@ -8,18 +8,22 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Loader2,
   Check,
-  CreditCard,
   Upload,
   ArrowLeft,
   ShieldCheck,
   Sparkles,
+  Landmark,
+  Copy,
+  Phone,
+  Clock,
+  AlertCircle,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
-import { dsaApi } from '@/lib/api'
+import { dsaApi, type PaymentStatus } from '@/lib/api'
 import { getToken, getUser } from '@/lib/auth'
 import { uploadToCloudinary } from '@/lib/cloudinary'
-import { resumePaystack } from '@/lib/paystack'
 import { accessLevel, LEVEL_LABEL } from '@/lib/access'
+import { BANK, HELPLINE, HELPLINE_INTL, VERIFY_WINDOW_TEXT } from '@/lib/bank'
 
 const str = (v: unknown) => (v == null ? '' : String(v))
 const naira = (n: number) => `₦${(n || 0).toLocaleString()}`
@@ -56,7 +60,6 @@ export default function UnlockPlans() {
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Plan | null>(null)
-  const [mode, setMode] = useState<'choose' | 'offline'>('choose')
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,6 +81,18 @@ export default function UnlockPlans() {
     : 0
 
   const [loadError, setLoadError] = useState<string | null>(null)
+  // Where my last receipt stands, so the page can say so instead of guessing.
+  const [status, setStatus] = useState<PaymentStatus | null>(null)
+  const loadStatus = useCallback(async () => {
+    try {
+      setStatus(await dsaApi.payments.mine(token))
+    } catch {
+      /* the page still works without it */
+    }
+  }, [token])
+  useEffect(() => {
+    void loadStatus()
+  }, [loadStatus])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -106,48 +121,11 @@ export default function UnlockPlans() {
 
   const openPlan = (p: Plan) => {
     setSelected(p)
-    setMode('choose')
     setError(null)
     setDone(null)
     setProofUrl('')
     setReference('')
     setMonths(1)
-  }
-
-  const payOnline = async () => {
-    if (!selected) return
-    setError(null)
-    setBusy(true)
-    try {
-      const res = (await dsaApi.payments.initOnline(
-        {
-          // The price comes from the plan, server-side. The browser naming a
-          // figure here is how a ₦100 payment buys a ₦20,000 tier.
-          planId: selected.id,
-          months: isTutorial ? months : selected.durationMonths || undefined,
-        },
-        token,
-      )) as { accessCode?: string }
-      if (!res?.accessCode)
-        throw new Error('Online payment is not available yet — please pay offline.')
-      const outcome = await resumePaystack({ accessCode: res.accessCode })
-      if (outcome.status === 'success') {
-        setDone('Payment received. Your access will update shortly.')
-        setSelected(null)
-      } else if (outcome.status === 'cancelled') {
-        setError('Payment cancelled.')
-      } else {
-        setError('Could not start the payment. Try offline instead.')
-      }
-    } catch (e) {
-      setError(
-        e instanceof Error
-          ? e.message
-          : 'Online payment is not available yet — please pay offline.',
-      )
-    } finally {
-      setBusy(false)
-    }
   }
 
   const onProof = async (file: File | null) => {
@@ -181,9 +159,12 @@ export default function UnlockPlans() {
         token,
       )
       setDone(
-        'Proof submitted. You have provisional access now — the admin will confirm your payment.',
+        `Receipt sent. You have access now, and the admin will confirm the transfer. If it is not confirmed within ${VERIFY_WINDOW_TEXT}, call ${HELPLINE}.`,
       )
       setSelected(null)
+      setProofUrl('')
+      setReference('')
+      void loadStatus()
     } catch (e) {
       setError(
         e instanceof Error
@@ -258,94 +239,72 @@ export default function UnlockPlans() {
 
         {error && <p className='text-[11px] font-bold text-rose-600 px-1'>{error}</p>}
 
-        {mode === 'choose' ? (
-          <div className='grid grid-cols-1 gap-2'>
-            <button
-              onClick={payOnline}
-              disabled={busy}
-              className='flex items-center justify-center gap-2 h-12 bg-[#002EFF] text-white rounded-2xl font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 disabled:opacity-50'
-            >
-              {busy ? (
-                <Loader2 size={16} className='animate-spin' />
-              ) : (
-                <CreditCard size={16} />
-              )}
-              Pay Online
-            </button>
-            <button
-              onClick={() => {
-                setMode('offline')
-                setError(null)
-              }}
-              className='flex items-center justify-center gap-2 h-12 bg-white border-2 border-slate-200 text-slate-700 rounded-2xl font-black text-[11px] uppercase tracking-wide hover:border-[#002EFF]/40'
-            >
-              <Upload size={16} /> I&apos;ve Paid Offline
-            </button>
+        {/* 1. Transfer */}
+        <Card className='p-5 rounded-3xl border-none shadow-sm bg-white space-y-3'>
+          <p className='text-[11px] font-black uppercase text-slate-500 flex items-center gap-1.5'>
+            <Landmark size={13} /> Step 1 · Transfer to our account
+          </p>
+          <div className='rounded-2xl bg-slate-50 p-3 space-y-2'>
+            <BankLine label='Bank' value={BANK.bank} />
+            <BankLine label='Account number' value={BANK.accountNumber} copy />
+            <BankLine label='Account name' value={BANK.accountName} />
+            <BankLine label='Amount' value={naira(effectiveAmount)} />
           </div>
-        ) : (
-          <Card className='p-5 rounded-3xl border-none shadow-sm bg-white space-y-3'>
-            <p className='text-[11px] font-black uppercase text-slate-500'>
-              Upload proof of payment
-            </p>
-            <p className='text-[11px] font-medium text-slate-400'>
-              Bank teller, transfer receipt or screenshot. The admin will confirm
-              it — you get access straight away.
-            </p>
-            <button
-              onClick={() => proofInput.current?.click()}
-              disabled={uploading}
-              className={`w-full flex items-center justify-center gap-2 h-11 rounded-xl text-[11px] font-black uppercase tracking-wide ${
-                proofUrl
-                  ? 'bg-emerald-50 text-emerald-700'
-                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
-              } disabled:opacity-50`}
-            >
-              {uploading ? (
-                <Loader2 size={15} className='animate-spin' />
-              ) : proofUrl ? (
-                <Check size={15} />
-              ) : (
-                <Upload size={15} />
-              )}
-              {proofUrl ? 'Proof uploaded' : 'Upload receipt / teller'}
-            </button>
-            <input
-              ref={proofInput}
-              type='file'
-              accept='image/*,.pdf'
-              hidden
-              onChange={(e) => onProof(e.target.files?.[0] ?? null)}
-            />
-            <div className='rounded-xl bg-slate-50 px-3 py-2.5'>
-              <p className='text-[10px] font-black uppercase text-slate-400'>
-                Amount to pay
-              </p>
-              <p className='text-sm font-black text-slate-800'>
-                {naira(effectiveAmount)}
-                {isTutorial && (
-                  <span className='font-bold text-slate-400'>
-                    {' '}
-                    / {months} month{months === 1 ? '' : 's'}
-                  </span>
-                )}
-              </p>
-            </div>
-            <input
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              placeholder='Transfer / teller reference (optional)'
-              className='w-full h-11 px-3 rounded-lg bg-slate-50 outline-none text-sm font-medium'
-            />
-            <button
-              onClick={submitOffline}
-              disabled={busy}
-              className='w-full flex items-center justify-center gap-2 h-12 bg-[#002EFF] text-white rounded-2xl font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 disabled:opacity-50'
-            >
-              {busy ? <Loader2 size={16} className='animate-spin' /> : <Check size={16} />}
-              Submit proof
-            </button>
-          </Card>
-        )}
+          <p className='text-[11px] font-medium text-slate-500'>
+            Use your name as the narration so we can find your transfer. Bank app, USSD or a teller at the bank all work.
+          </p>
+        </Card>
+
+        {/* 2. Upload */}
+        <Card className='p-5 rounded-3xl border-none shadow-sm bg-white space-y-3'>
+          <p className='text-[11px] font-black uppercase text-slate-500 flex items-center gap-1.5'>
+            <Upload size={13} /> Step 2 · Upload your receipt
+          </p>
+          <p className='text-[11px] font-medium text-slate-400'>
+            A screenshot of the transfer, the bank alert or the teller. Your access opens straight away; the admin then confirms the payment.
+          </p>
+          <button
+            onClick={() => proofInput.current?.click()}
+            disabled={uploading}
+            className={`w-full flex items-center justify-center gap-2 h-11 rounded-xl text-[11px] font-black uppercase tracking-wide ${
+              proofUrl
+                ? 'bg-emerald-50 text-emerald-700'
+                : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+            } disabled:opacity-50`}
+          >
+            {uploading ? (
+              <Loader2 size={15} className='animate-spin' />
+            ) : proofUrl ? (
+              <Check size={15} />
+            ) : (
+              <Upload size={15} />
+            )}
+            {proofUrl ? 'Receipt uploaded' : 'Upload receipt / teller'}
+          </button>
+          <input
+            ref={proofInput}
+            type='file'
+            accept='image/*,.pdf'
+            hidden
+            onChange={(e) => onProof(e.target.files?.[0] ?? null)}
+          />
+          <input
+            value={reference}
+            onChange={(e) => setReference(e.target.value)}
+            placeholder='Transfer / teller reference (optional)'
+            className='w-full h-11 px-3 rounded-lg bg-slate-50 outline-none text-sm font-medium'
+          />
+          <button
+            onClick={submitOffline}
+            disabled={busy}
+            className='w-full flex items-center justify-center gap-2 h-12 bg-[#002EFF] text-white rounded-2xl font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 disabled:opacity-50'
+          >
+            {busy ? <Loader2 size={16} className='animate-spin' /> : <Check size={16} />}
+            I have paid, submit receipt
+          </button>
+        </Card>
+
+        <HelplineCard />
       </div>
     )
   }
@@ -373,6 +332,8 @@ export default function UnlockPlans() {
           <p className='text-[11px] font-bold text-emerald-700'>{done}</p>
         </div>
       )}
+
+      <PaymentStatusCard status={status} />
 
       {!loading && loadError && (
         <div className='rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] font-bold text-amber-700 flex items-center justify-between gap-3'>
@@ -419,4 +380,123 @@ export default function UnlockPlans() {
       )}
     </div>
   )
+}
+
+/* One row of the bank details, with a copy button where it helps. */
+function BankLine({ label, value, copy }: { label: string; value: string; copy?: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const doCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* older browsers: the number is still on screen to type */
+    }
+  }
+  return (
+    <div className='flex items-center justify-between gap-3'>
+      <div className='min-w-0'>
+        <p className='text-[9px] font-black uppercase tracking-widest text-slate-400'>{label}</p>
+        <p className={`font-black text-slate-800 ${copy ? 'text-lg tracking-wider' : 'text-[13px]'}`}>{value}</p>
+      </div>
+      {copy && (
+        <button
+          type='button'
+          onClick={doCopy}
+          className='flex shrink-0 items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-[10px] font-black uppercase text-[#002EFF] ring-1 ring-blue-100 hover:bg-blue-50'
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* Who to call when a transfer is slow to be confirmed. */
+function HelplineCard() {
+  return (
+    <Card className='p-4 rounded-2xl border border-amber-200 bg-amber-50 shadow-none'>
+      <p className='text-[11px] font-black uppercase text-amber-800 flex items-center gap-1.5'>
+        <Phone size={13} /> Helpline
+      </p>
+      <p className='mt-1 text-[12px] font-medium text-amber-900'>
+        Confirmation usually takes minutes. If it takes more than {VERIFY_WINDOW_TEXT}, call or WhatsApp us on{' '}
+        <a href={`tel:${HELPLINE_INTL}`} className='font-black underline'>{HELPLINE}</a>.
+      </p>
+      <div className='mt-2 flex flex-wrap gap-2'>
+        <a
+          href={`tel:${HELPLINE_INTL}`}
+          className='inline-flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-[10px] font-black uppercase text-amber-800 ring-1 ring-amber-200'
+        >
+          <Phone size={12} /> Call
+        </a>
+        <a
+          href={`https://wa.me/${HELPLINE_INTL.replace('+', '')}`}
+          target='_blank'
+          rel='noopener noreferrer'
+          className='inline-flex h-9 items-center gap-1.5 rounded-lg bg-white px-3 text-[10px] font-black uppercase text-amber-800 ring-1 ring-amber-200'
+        >
+          WhatsApp
+        </a>
+      </div>
+    </Card>
+  )
+}
+
+const when = (iso?: string | null) => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString('en-NG', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+/* Where my last receipt stands: waiting, confirmed until a date, or not confirmed. */
+function PaymentStatusCard({ status }: { status: PaymentStatus | null }) {
+  if (!status?.payment) return null
+  const p = status.payment
+  const a = status.access
+  if (p.status === 'pending') {
+    return (
+      <div className='rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3'>
+        <p className='flex items-center gap-1.5 text-[10px] font-black uppercase text-amber-800'>
+          <Clock size={12} /> Waiting for confirmation
+        </p>
+        <p className='mt-1 text-[11px] font-bold text-slate-700'>
+          {p.planName || 'Your plan'} · {naira(p.amount)} · sent {when(p.createdAt)}. You have access
+          while we check the transfer. More than {VERIFY_WINDOW_TEXT}? Call{' '}
+          <a href={`tel:${HELPLINE_INTL}`} className='underline'>{HELPLINE}</a>.
+        </p>
+      </div>
+    )
+  }
+  if (p.status === 'approved' && a?.level !== 'free') {
+    return (
+      <div className='rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3'>
+        <p className='flex items-center gap-1.5 text-[10px] font-black uppercase text-emerald-800'>
+          <Check size={12} /> Payment confirmed
+        </p>
+        <p className='mt-1 text-[11px] font-bold text-slate-700'>
+          {p.planName || 'Your plan'} is active{a?.expiresAt ? ` until ${when(a.expiresAt)}` : ''}.
+          {a?.expiresAt ? ' When it ends, the portal goes back to free access until you pay again.' : ''}
+        </p>
+      </div>
+    )
+  }
+  if (p.status === 'rejected') {
+    return (
+      <div className='rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3'>
+        <p className='flex items-center gap-1.5 text-[10px] font-black uppercase text-rose-700'>
+          <AlertCircle size={12} /> Payment not confirmed
+        </p>
+        <p className='mt-1 text-[11px] font-bold text-slate-700'>
+          {p.reviewNote || 'We could not match your receipt to a transfer.'} Check the amount and account,
+          then choose the plan again and upload the receipt, or call{' '}
+          <a href={`tel:${HELPLINE_INTL}`} className='underline'>{HELPLINE}</a>.
+        </p>
+      </div>
+    )
+  }
+  return null
 }
