@@ -803,6 +803,7 @@ import {
   CourseMaterial,
   CreateMaterialPayload,
 } from '@/lib/admin-api'
+import { uploadToCloudinary, cloudinaryConfigured } from '@/lib/cloudinary'
 
 // Accepts an optional `courseId` because LibraryCourseWrapper passes one; it is
 // not consumed yet (course-scoped library still to be wired). Added to unbreak
@@ -908,42 +909,23 @@ export default function LibraryPage(_props?: { courseId?: string }) {
       setError(null)
       setFileToUpload(file)
 
-      // Get presigned URL from backend API
-      const signRes = await adminApi.signUploadUrl({
-        filename: file.name,
-        contentType: file.type,
-        folder: 'materials',
-      })
-
-      const uploadUrl = signRes.data?.uploadUrl || signRes.uploadUrl
-      const fileUrl = signRes.data?.fileUrl || signRes.fileUrl
-
-      if (!uploadUrl || !fileUrl) {
-        throw new Error('Failed to generate signed upload URL.')
+      // The browser uploads straight to Cloudinary (the backend has no object
+      // storage) and we keep the hosted URL — same path used for avatars and
+      // payment receipts. Handles PDFs, video and images.
+      if (!cloudinaryConfigured()) {
+        throw new Error('File upload is not configured. Paste a hosted link in the URL field instead.')
       }
+      const uploaded = await uploadToCloudinary(file, 'materials')
 
-      // Upload file directly to Presigned Storage Destination (e.g., AWS S3)
-      const uploadRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': file.type,
-        },
-        body: file,
-      })
-
-      if (!uploadRes.ok) {
-        throw new Error('Direct file upload to storage failed.')
-      }
-
-      // Automatically update form fields based on file upload metadata
+      // Automatically update form fields based on the uploaded file.
       setFormData((prev) => ({
         ...prev,
-        url: fileUrl,
-        fileSizeBytes: file.size,
+        url: uploaded.url,
+        fileSizeBytes: uploaded.bytes ?? file.size,
         title: prev.title ? prev.title : file.name.replace(/\.[^/.]+$/, ''),
       }))
 
-      setSuccess('File uploaded successfully! Finalize the form below.')
+      setSuccess('File uploaded. Finalize the form below.')
     } catch (err: any) {
       setError(err.message || 'An error occurred while uploading file.')
     } finally {

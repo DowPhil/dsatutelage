@@ -479,6 +479,16 @@ export const adminApi = {
     ),
 
   /**
+   * Email an activation link to a chosen set of students (not everyone).
+   * Endpoint: POST /api/admin/users/resend-activation with { ids, since }
+   */
+  resendActivationTo: (ids: string[], since?: string) =>
+    adminFetch<{ success: boolean; data: { total: number; sent: number; remaining: number; failed: { email: string; reason: string }[] } }>(
+      '/api/admin/users/resend-activation',
+      { method: 'POST', body: JSON.stringify({ ids, ...(since ? { since } : {}) }) },
+    ),
+
+  /**
    * Students' requests to move class / programme.
    * Endpoint: GET /api/admin/change-requests?status=pending|all
    */

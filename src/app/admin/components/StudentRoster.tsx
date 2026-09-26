@@ -1103,6 +1103,15 @@ export default function StudentRoster() {
   const [statusFilter, setStatusFilter] = useState('')
   const [bulkSending, setBulkSending] = useState(false)
   const [bulkMsg, setBulkMsg] = useState('')
+  // Which unverified students the admin ticked, to email just them.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1)
@@ -1221,40 +1230,44 @@ export default function StudentRoster() {
   // Email every student still waiting on verification a fresh code and a
   // one-tap activation link. The server does 40 per call; keep calling until
   // nobody is left, and show the running total.
-  const resendToAllUnverified = async () => {
-    if (
-      !window.confirm(
-        'Email every unverified student a fresh code and an activation link? Each one gets a single email.',
-      )
-    )
-      return
+  // Email an activation link to just the students the admin ticked.
+  const resendToSelected = async () => {
+    const ids = Array.from(selectedIds)
+    if (!ids.length) return
+    if (!window.confirm(`Email an activation link to ${ids.length} selected student${ids.length === 1 ? '' : 's'}?`)) return
     setBulkSending(true)
     setBulkMsg('Sending…')
-    let sent = 0
-    const failed: { email: string; reason: string }[] = []
-    // One timestamp for the whole pass: the server only emails students who
-    // have not been sent one since this moment, so nobody is emailed twice.
-    const passStartedAt = new Date().toISOString()
     try {
-      for (let round = 0; round < 25; round += 1) {
-        const res = await adminApi.resendActivationAll(passStartedAt)
-        sent += res.data.sent
-        failed.push(...res.data.failed)
-        setBulkMsg(`Sent ${sent}… ${res.data.remaining} to go`)
-        if (res.data.remaining === 0 || (res.data.failed.length && res.data.sent === 0)) break
-      }
+      const res = await adminApi.resendActivationTo(ids)
       setBulkMsg(
-        `Sent ${sent} activation email${sent === 1 ? '' : 's'}.` +
-          (failed.length
-            ? ` ${failed.length} could not be sent — first: ${failed[0].email} (${failed[0].reason})`
+        `Sent ${res.data.sent} activation email${res.data.sent === 1 ? '' : 's'}.` +
+          (res.data.failed.length
+            ? ` ${res.data.failed.length} could not be sent — first: ${res.data.failed[0].email} (${res.data.failed[0].reason})`
             : ''),
       )
+      setSelectedIds(new Set())
     } catch (err) {
       setBulkMsg(err instanceof Error ? err.message : 'Sending stopped early.')
     } finally {
       setBulkSending(false)
     }
   }
+
+  // Tick / untick every unverified student on this page at once.
+  const pageUnverifiedIds = () =>
+    students.filter((p) => p.status === 'pending_otp').map((p) => String(p.id || p.key))
+  const allPageSelected = () => {
+    const ids = pageUnverifiedIds()
+    return ids.length > 0 && ids.every((id) => selectedIds.has(id))
+  }
+  const toggleSelectPage = () =>
+    setSelectedIds((prev) => {
+      const ids = pageUnverifiedIds()
+      const next = new Set(prev)
+      if (ids.every((id) => next.has(id))) ids.forEach((id) => next.delete(id))
+      else ids.forEach((id) => next.add(id))
+      return next
+    })
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -1500,16 +1513,25 @@ export default function StudentRoster() {
           <option value='active'>Active</option>
           <option value='suspended'>Suspended</option>
         </select>
-        {statusFilter === 'pending_otp' && (
-          <button
-            type='button'
-            onClick={resendToAllUnverified}
-            disabled={bulkSending || loading || students.length === 0}
-            className='h-9 px-3 rounded-lg bg-[#002EFF] text-white text-[10px] font-black uppercase hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5'
-          >
-            {bulkSending ? <Loader2 size={12} className='animate-spin' /> : <Send size={12} />}
-            Resend activation link to all unverified ({totalStudents})
-          </button>
+        {statusFilter === 'pending_otp' && students.length > 0 && (
+          <>
+            <button
+              type='button'
+              onClick={toggleSelectPage}
+              className='h-9 px-3 rounded-lg border border-slate-200 bg-white text-[10px] font-black uppercase text-slate-600 hover:border-[#002EFF]/40'
+            >
+              {allPageSelected() ? 'Unselect page' : 'Select page'}
+            </button>
+            <button
+              type='button'
+              onClick={resendToSelected}
+              disabled={bulkSending || loading || selectedIds.size === 0}
+              className='h-9 px-3 rounded-lg bg-[#002EFF] text-white text-[10px] font-black uppercase hover:bg-blue-700 disabled:opacity-50 inline-flex items-center gap-1.5'
+            >
+              {bulkSending ? <Loader2 size={12} className='animate-spin' /> : <Send size={12} />}
+              Send activation link to selected ({selectedIds.size})
+            </button>
+          </>
         )}
         {(programmeFilter || classFilter || accessFilter || statusFilter) && (
           <button
@@ -1564,7 +1586,17 @@ export default function StudentRoster() {
                 >
                   <div className='space-y-2'>
                     <div className='flex items-start justify-between gap-2'>
-                      <div>
+                      <div className='flex items-start gap-2'>
+                        {isUnverified && (
+                          <input
+                            type='checkbox'
+                            checked={selectedIds.has(String(p.id || p.key))}
+                            onChange={() => toggleSelected(String(p.id || p.key))}
+                            className='mt-0.5 h-4 w-4 shrink-0 accent-[#002EFF]'
+                            aria-label={`Select ${p.name}`}
+                          />
+                        )}
+                        <div>
                         <h3 className='text-xs font-black text-slate-900 line-clamp-1'>
                           {p.name}
                         </h3>
@@ -1573,6 +1605,7 @@ export default function StudentRoster() {
                             ID: {p.studentCode}
                           </span>
                         )}
+                        </div>
                       </div>
                       <Badge
                         className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
@@ -1701,15 +1734,26 @@ export default function StudentRoster() {
                     isSuspended ? 'bg-slate-50/50' : ''
                   }`}
                 >
-                  <div className='col-span-4 flex flex-col'>
-                    <span className='text-xs font-black text-gray-800'>
-                      {p.name}
-                    </span>
-                    {p.studentCode && (
-                      <span className='text-[9px] font-bold text-slate-400'>
-                        ID: {p.studentCode}
-                      </span>
+                  <div className='col-span-4 flex items-center gap-2'>
+                    {isUnverified && (
+                      <input
+                        type='checkbox'
+                        checked={selectedIds.has(String(p.id || p.key))}
+                        onChange={() => toggleSelected(String(p.id || p.key))}
+                        className='h-4 w-4 shrink-0 accent-[#002EFF]'
+                        aria-label={`Select ${p.name}`}
+                      />
                     )}
+                    <div className='flex flex-col min-w-0'>
+                      <span className='text-xs font-black text-gray-800 truncate'>
+                        {p.name}
+                      </span>
+                      {p.studentCode && (
+                        <span className='text-[9px] font-bold text-slate-400'>
+                          ID: {p.studentCode}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <span className='col-span-3 text-[10px] font-bold text-slate-500 flex items-center gap-1 truncate'>
