@@ -400,6 +400,9 @@ export default function Community({
   const [manageOpen, setManageOpen] = useState(false)
   // The last fetch of rooms or messages failed; the poll keeps trying.
   const [offline, setOffline] = useState(false)
+  // One dropped request on a flaky phone network is normal; only call the
+  // room offline after a few in a row, and never while the socket is live.
+  const channelFailsRef = useRef(0)
   // Phone: the header only has room for the bell; the rest fold under `⋯`.
   const [moreOpen, setMoreOpen] = useState(false)
   // How tall the chat may be: from where it starts down to the bottom of the
@@ -613,6 +616,15 @@ export default function Community({
 
   const load = useCallback(
     async (initial = false) => {
+      // Switching channel: show the new room's own loading state at once and
+      // drop the old room's messages, so the tap feels instant instead of
+      // leaving the previous chat on screen until the fetch returns.
+      const switching = msgChannelRef.current !== activeChannel
+      if (initial || switching) setLoading(true)
+      if (switching) {
+        setMessages([])
+        setOlderDone(false)
+      }
       try {
         const rows = (await dsaApi.community.list(
           { limit: PAGE_SIZE, channelId: activeChannel },
@@ -637,7 +649,7 @@ export default function Community({
         // than a crash. Sending will surface the real error inline if tried.
         if (initial) setNotReady(true)
       } finally {
-        if (initial) setLoading(false)
+        setLoading(false)
       }
     },
     [normalize, token, activeChannel],
@@ -1349,13 +1361,17 @@ export default function Community({
         unknown
       >[]
       list = rows.map(toChannel)
+      channelFailsRef.current = 0
       setOffline(false)
     } catch {
       // The server could not be reached. This used to swap in a made-up list
       // (SS1, SS2, WAEC, JAMB…) so the switcher "still worked" — which looked
       // exactly like a broken deployment. Keep whatever was loaded before,
-      // say so, and let the next poll try again.
-      setOffline(true)
+      // and only warn after a few misses in a row — a single dropped request
+      // on a phone network is normal, and if the socket is live the room is
+      // working anyway.
+      channelFailsRef.current += 1
+      if (channelFailsRef.current >= 3 && !liveRef.current) setOffline(true)
       return
     }
     let visible = list
@@ -2234,7 +2250,7 @@ export default function Community({
           </div>
         )}
 
-        {(notReady || offline) && (
+        {(notReady || offline) && !live && (
           <div className='flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2'>
             <AlertCircle size={14} className='mt-0.5 shrink-0 text-amber-600' />
             <p className='text-[11px] font-medium text-amber-700'>
