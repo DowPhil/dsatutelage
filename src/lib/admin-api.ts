@@ -472,10 +472,10 @@ export const adminApi = {
    * says how many are still waiting — call again until it is 0.
    * Endpoint: POST /api/admin/users/resend-activation
    */
-  resendActivationAll: () =>
+  resendActivationAll: (since?: string) =>
     adminFetch<{ success: boolean; data: { total: number; sent: number; remaining: number; failed: { email: string; reason: string }[] } }>(
       '/api/admin/users/resend-activation',
-      { method: 'POST', body: '{}' },
+      { method: 'POST', body: JSON.stringify(since ? { since } : {}) },
     ),
 
   /**

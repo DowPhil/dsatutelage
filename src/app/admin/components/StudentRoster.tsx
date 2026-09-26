@@ -1232,9 +1232,12 @@ export default function StudentRoster() {
     setBulkMsg('Sending…')
     let sent = 0
     const failed: { email: string; reason: string }[] = []
+    // One timestamp for the whole pass: the server only emails students who
+    // have not been sent one since this moment, so nobody is emailed twice.
+    const passStartedAt = new Date().toISOString()
     try {
       for (let round = 0; round < 25; round += 1) {
-        const res = await adminApi.resendActivationAll()
+        const res = await adminApi.resendActivationAll(passStartedAt)
         sent += res.data.sent
         failed.push(...res.data.failed)
         setBulkMsg(`Sent ${sent}… ${res.data.remaining} to go`)
