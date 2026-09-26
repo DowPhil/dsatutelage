@@ -970,23 +970,31 @@ export default function Community({
       setError(null)
       setSending(true)
       try {
-        await dsaApi.community.send(
+        const created = (await dsaApi.community.send(
           {
             ...body,
             channelId: activeChannel,
             ...(replyTarget ? { replyTo: replyTarget.id } : {}),
           },
           token,
-        )
+        )) as Record<string, unknown> | undefined
         setReplyTarget(null)
-        await load(false)
+        // Show it immediately from the server's own reply — no waiting on a
+        // full channel reload. The socket's message:new dedupes by id.
+        if (created && (created.id || created._id)) {
+          const msg = normalize(created)
+          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
+          setAtBottom(true)
+        } else if (!liveRef.current) {
+          void load(false)
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not send message.')
       } finally {
         setSending(false)
       }
     },
-    [load, token, activeChannel, replyTarget],
+    [load, token, activeChannel, replyTarget, normalize],
   )
 
   // Tap an emoji to add it, tap it again to take it back. The bubble updates
@@ -1184,7 +1192,7 @@ export default function Community({
       setError(null)
       try {
         await dsaApi.community.update(id, { text: newText }, token)
-        await load(false)
+        if (!liveRef.current) void load(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not edit message.')
       }
@@ -1198,7 +1206,7 @@ export default function Community({
       setError(null)
       try {
         await dsaApi.community.update(m.id, { pinned: !m.pinned }, token)
-        await load(false)
+        if (!liveRef.current) void load(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not pin message.')
       }
@@ -1267,7 +1275,7 @@ export default function Community({
       setPollOptions(['', ''])
       setPollIsQuiz(false)
       setPollCorrect(0)
-      await load(false)
+      if (!liveRef.current) void load(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not post the poll.')
     } finally {
@@ -1544,11 +1552,22 @@ export default function Community({
     setMembers([...seen.values()])
   }, [activeChannel, token, messages])
 
-  // The roster feeds both the member panel and the @mention picker, so load it
-  // with the channel rather than only when the panel opens.
+  // The member roster on a big channel is an expensive query, so it is loaded
+  // lazily: when the member panel is opened, or when the user actually starts
+  // an @mention — never on every channel switch.
+  const membersLoadedFor = useRef('')
   useEffect(() => {
-    loadMembers()
-  }, [loadMembers])
+    // New channel: forget the old roster; the panel/mention will refetch.
+    setMembers([])
+    membersLoadedFor.current = ''
+  }, [activeChannel])
+  useEffect(() => {
+    const wantMembers = membersOpen || mentionQuery !== null
+    if (wantMembers && membersLoadedFor.current !== activeChannel) {
+      membersLoadedFor.current = activeChannel
+      loadMembers()
+    }
+  }, [membersOpen, mentionQuery, activeChannel, loadMembers])
 
   // Who the "@" you just typed could mean. Staff also get @everyone.
   const mentionOptions =
