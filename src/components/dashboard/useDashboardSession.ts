@@ -80,6 +80,36 @@ export function useDashboardSession(requiredRole: UserRole): SessionState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requiredRole, router])
 
+  // A staff member's permissions come from their role, and an admin can change
+  // the role while they are signed in. Re-read the profile once a minute and
+  // whenever the tab comes back into focus, so a newly granted screen appears
+  // without signing out and in. Only real sessions have anything to re-read.
+  useEffect(() => {
+    const token = getToken()
+    if (!token || isDemoToken(token)) return
+    let stale = false
+    const refresh = async () => {
+      try {
+        const profile = await dsaApi.auth.getProfile(token)
+        if (stale || !profile) return
+        setUser((prev) =>
+          JSON.stringify(prev) === JSON.stringify(profile) ? prev : profile,
+        )
+      } catch {
+        /* a blip; the next check will catch up */
+      }
+    }
+    const id = setInterval(() => {
+      if (!document.hidden) refresh()
+    }, 60000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      stale = true
+      clearInterval(id)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+
   // Auto-logout after 30 minutes of inactivity (applies to every dashboard that
   // uses this hook — tutor, guardian, staff).
   useSecureSession({ onIdleTimeout: logout, idleMinutes: 30 })

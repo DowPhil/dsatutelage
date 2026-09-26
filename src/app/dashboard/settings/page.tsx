@@ -27,8 +27,7 @@ import { getUser, getToken, setUser } from '@/lib/auth'
 import { isDemoToken } from '@/lib/demoAccounts'
 import { uploadToCloudinary, cloudinaryConfigured } from '@/lib/cloudinary'
 import type { User as DsaUser } from '@/lib/types'
-import { EXAM_TRACKS, type ExamTrack } from '@/lib/studentProfile'
-import { examTracksForProgrammes } from '@/lib/registration'
+import ClassChangeCard from '@/components/dashboard/ClassChangeCard'
 
 export default function SettingsView() {
   const [activeTab, setActiveTab] = useState('Account Info')
@@ -53,7 +52,6 @@ export default function SettingsView() {
   const [currentLevel, setCurrentLevel] = useState('')
   const [examTrack, setExamTrack] = useState('')
   // Programmes the student enrolled for — drives the self-serve track switcher.
-  const [programmes, setProgrammes] = useState<string[]>([])
   // Parent/guardian — asked for here rather than at sign-up, so registration
   // stays short. A student can save the rest of the form without it.
   const [guardianName, setGuardianName] = useState('')
@@ -92,7 +90,6 @@ export default function SettingsView() {
       setExamTrack(
         (u.examTrack as string) || (u.examType as string) || '',
       )
-      const progs = u.programmes ?? u.subjectsOfInterest
       const g = (u.guardianInfo ?? {}) as Record<string, unknown>
       // For a short while on 2026-09-24 the sign-up form sent a placeholder
       // guardian ("Not yet provided"); show that as empty so those students
@@ -101,7 +98,6 @@ export default function SettingsView() {
       setGuardianName(placeholder ? '' : (g.fullname as string) || '')
       setGuardianPhone(placeholder ? '' : (g.phoneNumber as string) || '')
       setGuardianEmail(placeholder ? '' : (g.email as string) || '')
-      if (Array.isArray(progs)) setProgrammes(progs as string[])
       const subs = u.subjects ?? u.subjectsOfInterest
       setSubjects(
         Array.isArray(subs)
@@ -201,7 +197,6 @@ export default function SettingsView() {
               },
             }
           : {}),
-        ...(role === 'student' && examTrack ? { examTrack } : {}),
       })
       // Refresh the cached user so the sidebar/header pick up the new name/avatar.
       const updated = (res?.data ?? res?.user) as DsaUser | undefined
@@ -237,13 +232,6 @@ export default function SettingsView() {
       lvl.includes('ss3') ||
       ['waec', 'jamb', 'postutme'].includes(tr))
 
-  // Tracks the student enrolled for. A switcher is only useful when they chose
-  // more than one (e.g. JAMB + Post-UTME) — they flip which one their portal
-  // shows without waiting on an admin.
-  const availableTracks = (
-    role === 'student' ? examTracksForProgrammes(programmes) : []
-  ) as ExamTrack[]
-  const canSwitchTrack = availableTracks.length > 1
 
   return (
     <div className='max-w-3xl mx-auto space-y-4 animate-in fade-in duration-500 pb-10'>
@@ -369,29 +357,6 @@ export default function SettingsView() {
                   </>
                 )}
 
-                {canSwitchTrack && (
-                  <div className='space-y-1'>
-                    <label className='text-[9px] font-black text-gray-400 uppercase ml-1'>
-                      Current programme
-                    </label>
-                    <select
-                      value={examTrack.toLowerCase()}
-                      onChange={(e) => setExamTrack(e.target.value)}
-                      className='w-full h-9 rounded-lg border border-gray-100 bg-gray-50/50 text-[11px] font-bold focus:bg-white px-3 outline-none'
-                    >
-                      {availableTracks.map((t) => (
-                        <option key={t} value={t}>
-                          {EXAM_TRACKS[t].fullName}
-                        </option>
-                      ))}
-                    </select>
-                    <p className='text-[9px] font-bold text-slate-400 ml-1'>
-                      You enrolled for more than one — switch which one your
-                      portal focuses on (e.g. JAMB now, Post-UTME later).
-                    </p>
-                  </div>
-                )}
-
                 {needsDept && (
                   <div className='space-y-1'>
                     <label className='text-[9px] font-black text-gray-400 uppercase ml-1'>
@@ -443,6 +408,8 @@ export default function SettingsView() {
               </div>
             </Card>
           )}
+
+          {activeTab === 'Account Info' && role === 'student' && <ClassChangeCard />}
 
           {activeTab === 'Security & Password' && <PasswordCard />}
 

@@ -400,6 +400,9 @@ export default function Community({
   const [manageOpen, setManageOpen] = useState(false)
   // The last fetch of rooms or messages failed; the poll keeps trying.
   const [offline, setOffline] = useState(false)
+  // One dropped request on a flaky phone network is normal; only call the
+  // room offline after a few in a row, and never while the socket is live.
+  const channelFailsRef = useRef(0)
   // Phone: the header only has room for the bell; the rest fold under `⋯`.
   const [moreOpen, setMoreOpen] = useState(false)
   // How tall the chat may be: from where it starts down to the bottom of the
@@ -613,6 +616,15 @@ export default function Community({
 
   const load = useCallback(
     async (initial = false) => {
+      // Switching channel: show the new room's own loading state at once and
+      // drop the old room's messages, so the tap feels instant instead of
+      // leaving the previous chat on screen until the fetch returns.
+      const switching = msgChannelRef.current !== activeChannel
+      if (initial || switching) setLoading(true)
+      if (switching) {
+        setMessages([])
+        setOlderDone(false)
+      }
       try {
         const rows = (await dsaApi.community.list(
           { limit: PAGE_SIZE, channelId: activeChannel },
@@ -637,7 +649,7 @@ export default function Community({
         // than a crash. Sending will surface the real error inline if tried.
         if (initial) setNotReady(true)
       } finally {
-        if (initial) setLoading(false)
+        setLoading(false)
       }
     },
     [normalize, token, activeChannel],
@@ -958,23 +970,31 @@ export default function Community({
       setError(null)
       setSending(true)
       try {
-        await dsaApi.community.send(
+        const created = (await dsaApi.community.send(
           {
             ...body,
             channelId: activeChannel,
             ...(replyTarget ? { replyTo: replyTarget.id } : {}),
           },
           token,
-        )
+        )) as Record<string, unknown> | undefined
         setReplyTarget(null)
-        await load(false)
+        // Show it immediately from the server's own reply — no waiting on a
+        // full channel reload. The socket's message:new dedupes by id.
+        if (created && (created.id || created._id)) {
+          const msg = normalize(created)
+          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
+          setAtBottom(true)
+        } else if (!liveRef.current) {
+          void load(false)
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not send message.')
       } finally {
         setSending(false)
       }
     },
-    [load, token, activeChannel, replyTarget],
+    [load, token, activeChannel, replyTarget, normalize],
   )
 
   // Tap an emoji to add it, tap it again to take it back. The bubble updates
@@ -1172,7 +1192,7 @@ export default function Community({
       setError(null)
       try {
         await dsaApi.community.update(id, { text: newText }, token)
-        await load(false)
+        if (!liveRef.current) void load(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not edit message.')
       }
@@ -1186,7 +1206,7 @@ export default function Community({
       setError(null)
       try {
         await dsaApi.community.update(m.id, { pinned: !m.pinned }, token)
-        await load(false)
+        if (!liveRef.current) void load(false)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not pin message.')
       }
@@ -1255,7 +1275,7 @@ export default function Community({
       setPollOptions(['', ''])
       setPollIsQuiz(false)
       setPollCorrect(0)
-      await load(false)
+      if (!liveRef.current) void load(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not post the poll.')
     } finally {
@@ -1349,13 +1369,17 @@ export default function Community({
         unknown
       >[]
       list = rows.map(toChannel)
+      channelFailsRef.current = 0
       setOffline(false)
     } catch {
       // The server could not be reached. This used to swap in a made-up list
       // (SS1, SS2, WAEC, JAMB…) so the switcher "still worked" — which looked
       // exactly like a broken deployment. Keep whatever was loaded before,
-      // say so, and let the next poll try again.
-      setOffline(true)
+      // and only warn after a few misses in a row — a single dropped request
+      // on a phone network is normal, and if the socket is live the room is
+      // working anyway.
+      channelFailsRef.current += 1
+      if (channelFailsRef.current >= 3 && !liveRef.current) setOffline(true)
       return
     }
     let visible = list
@@ -1528,11 +1552,22 @@ export default function Community({
     setMembers([...seen.values()])
   }, [activeChannel, token, messages])
 
-  // The roster feeds both the member panel and the @mention picker, so load it
-  // with the channel rather than only when the panel opens.
+  // The member roster on a big channel is an expensive query, so it is loaded
+  // lazily: when the member panel is opened, or when the user actually starts
+  // an @mention — never on every channel switch.
+  const membersLoadedFor = useRef('')
   useEffect(() => {
-    loadMembers()
-  }, [loadMembers])
+    // New channel: forget the old roster; the panel/mention will refetch.
+    setMembers([])
+    membersLoadedFor.current = ''
+  }, [activeChannel])
+  useEffect(() => {
+    const wantMembers = membersOpen || mentionQuery !== null
+    if (wantMembers && membersLoadedFor.current !== activeChannel) {
+      membersLoadedFor.current = activeChannel
+      loadMembers()
+    }
+  }, [membersOpen, mentionQuery, activeChannel, loadMembers])
 
   // Who the "@" you just typed could mean. Staff also get @everyone.
   const mentionOptions =
@@ -2234,7 +2269,7 @@ export default function Community({
           </div>
         )}
 
-        {(notReady || offline) && (
+        {(notReady || offline) && !live && (
           <div className='flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2'>
             <AlertCircle size={14} className='mt-0.5 shrink-0 text-amber-600' />
             <p className='text-[11px] font-medium text-amber-700'>

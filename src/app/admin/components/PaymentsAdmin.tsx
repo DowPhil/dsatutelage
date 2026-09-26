@@ -489,18 +489,37 @@ function CapsSection({ token }: { token?: string }) {
 }
 
 /* ------------------------ Offline review queue ------------------------ */
-function OfflineQueueSection({ token }: { token?: string }) {
+/**
+ * Receipts students uploaded, waiting for a yes or no. Shared with the staff
+ * dashboard, where a secretary with payments.verify does the same job.
+ */
+export function OfflineQueueSection({
+  token,
+  canReview = true,
+}: {
+  token?: string
+  /** False for staff who may only look (payments.view without payments.verify). */
+  canReview?: boolean
+}) {
   const [rows, setRows] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
   const [note, setNote] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [rejecting, setRejecting] = useState<string | null>(null)
+  const [reason, setReason] = useState('')
+  const [flash, setFlash] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setRows((await dsaApi.payments.offlineQueue(token)) as Record<string, unknown>[])
       setNote(null)
-    } catch {
-      setNote('Offline queue endpoint not live yet — proofs will appear here once it ships.')
+    } catch (e) {
+      setNote(
+        e instanceof Error
+          ? `Could not load the proofs: ${e.message}`
+          : 'Could not load the proofs. Check your connection and refresh.',
+      )
     } finally {
       setLoading(false)
     }
@@ -510,11 +529,20 @@ function OfflineQueueSection({ token }: { token?: string }) {
   }, [load])
 
   const review = async (id: string, decision: 'approve' | 'reject') => {
-    setRows((r) => r.filter((x) => str(x.id ?? x._id) !== id))
+    setBusy(id)
+    setNote(null)
     try {
-      await dsaApi.payments.review(id, decision, token)
-    } catch {
-      load()
+      await dsaApi.payments.review(id, decision, token, decision === 'reject' ? reason : undefined)
+      setRows((r) => r.filter((x) => str(x.id ?? x._id) !== id))
+      setRejecting(null)
+      setReason('')
+      setFlash(decision === 'approve' ? 'Payment confirmed. The student has been told.' : 'Payment rejected. The student has been told.')
+      setTimeout(() => setFlash(null), 4000)
+    } catch (e) {
+      // Keep the row and say why, rather than silently putting it back.
+      setNote(e instanceof Error ? e.message : 'Could not save the decision.')
+    } finally {
+      setBusy(null)
     }
   }
 
@@ -523,7 +551,8 @@ function OfflineQueueSection({ token }: { token?: string }) {
       <p className='text-[11px] font-black uppercase text-slate-500'>
         Offline payment proofs
       </p>
-      {note && <p className='text-[11px] font-bold text-amber-600'>{note}</p>}
+      {note && <p className='text-[11px] font-bold text-rose-600'>{note}</p>}
+      {flash && <p className='text-[11px] font-bold text-emerald-600'>{flash}</p>}
       {loading ? (
         <div className='py-4 flex justify-center'>
           <Loader2 className='animate-spin text-[#002EFF]' size={18} />
@@ -542,42 +571,66 @@ function OfflineQueueSection({ token }: { token?: string }) {
                 r.studentName ??
                 r.studentId,
             ) || 'Student'
+          const isBusy = busy === id
           return (
-            <div
-              key={id}
-              className='flex items-center gap-2 p-2.5 rounded-xl bg-slate-50'
-            >
-              <div className='min-w-0 flex-1'>
-                <p className='text-xs font-black text-slate-800 truncate'>{who}</p>
-                <p className='text-[10px] font-bold text-slate-400'>
-                  {naira(Number(r.amount))} · {str(r.method) || 'offline'}
-                  {r.reference ? ` · ${str(r.reference)}` : ''}
-                </p>
+            <div key={id} className='rounded-xl bg-slate-50 p-2.5'>
+              <div className='flex items-center gap-2'>
+                <div className='min-w-0 flex-1'>
+                  <p className='text-xs font-black text-slate-800 truncate'>{who}</p>
+                  <p className='text-[10px] font-bold text-slate-400'>
+                    {naira(Number(r.amount))} · {str(r.method) || 'offline'}
+                    {r.reference ? ` · ${str(r.reference)}` : ''}
+                  </p>
+                </div>
+                {proof && (
+                  <a
+                    href={proof}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    className='flex items-center gap-1 text-[10px] font-black text-[#002EFF] hover:underline'
+                  >
+                    <ExternalLink size={11} /> Proof
+                  </a>
+                )}
+                {canReview && (
+                  <>
+                    <button
+                      onClick={() => review(id, 'approve')}
+                      disabled={isBusy}
+                      className='p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50'
+                      title='Approve'
+                    >
+                      {isBusy ? <Loader2 size={14} className='animate-spin' /> : <Check size={14} />}
+                    </button>
+                    <button
+                      onClick={() => setRejecting(rejecting === id ? null : id)}
+                      disabled={isBusy}
+                      className='p-1.5 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 disabled:opacity-50'
+                      title='Reject'
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                )}
               </div>
-              {proof && (
-                <a
-                  href={proof}
-                  target='_blank'
-                  rel='noopener noreferrer'
-                  className='flex items-center gap-1 text-[10px] font-black text-[#002EFF] hover:underline'
-                >
-                  <ExternalLink size={11} /> Proof
-                </a>
+              {rejecting === id && (
+                <div className='mt-2 flex flex-col gap-2 sm:flex-row'>
+                  <input
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    maxLength={300}
+                    placeholder='Why not? The student sees this.'
+                    className='h-9 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-medium outline-none focus:border-rose-300'
+                  />
+                  <button
+                    onClick={() => review(id, 'reject')}
+                    disabled={isBusy}
+                    className='h-9 rounded-lg bg-rose-600 px-4 text-[10px] font-black uppercase text-white hover:bg-rose-700 disabled:opacity-50'
+                  >
+                    Confirm reject
+                  </button>
+                </div>
               )}
-              <button
-                onClick={() => review(id, 'approve')}
-                className='p-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                title='Approve'
-              >
-                <Check size={14} />
-              </button>
-              <button
-                onClick={() => review(id, 'reject')}
-                className='p-1.5 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100'
-                title='Reject / disable'
-              >
-                <X size={14} />
-              </button>
             </div>
           )
         })

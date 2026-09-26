@@ -149,14 +149,15 @@ export default function Programs() {
 
         {/* CTA */}
         <div className='flex justify-center mt-16'>
-          <button
+          <Link
+            href='/programmes'
             data-aos='zoom-in'
             data-aos-duration='400'
             className='px-10 py-4 bg-[#002EFF] text-white font-bold rounded-xl shadow-lg hover:bg-[#FCB900] hover:text-black transition-all duration-300 flex items-center gap-2 active:scale-95'
           >
             Explore All Programs
             <ArrowRight size={20} />
-          </button>
+          </Link>
         </div>
       </div>
     </section>
