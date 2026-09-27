@@ -568,6 +568,7 @@
 // }
 
 
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -585,8 +586,6 @@ import {
   CalendarClock,
   CalendarCheck,
   BrainCircuit,
-  User,
-  ArrowRight,
   Sparkles,
 } from 'lucide-react'
 import {
@@ -627,17 +626,19 @@ function isLive(): boolean {
 
 function SmallStat({ label, value, icon: Icon, color, bg }: any) {
   return (
-    <Card className="p-3.5 rounded-2xl border border-slate-100/80 shadow-xs bg-white/90 backdrop-blur-xs flex items-center gap-3 hover:-translate-y-0.5 transition-all duration-300">
+    <Card className="p-3.5 sm:p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 shadow-xs bg-white/90 dark:bg-slate-900/90 backdrop-blur-xs flex items-center gap-3.5 hover:-translate-y-0.5 transition-all duration-300">
       <div
-        className={`h-10 w-10 ${bg || 'bg-slate-50'} ${color} rounded-xl flex items-center justify-center shrink-0 shadow-inner`}
+        className={`h-10 w-10 sm:h-11 sm:w-11 ${bg || 'bg-slate-50 dark:bg-slate-800'} ${color} rounded-xl flex items-center justify-center shrink-0 shadow-inner`}
       >
         <Icon size={18} strokeWidth={2.5} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-[9px] font-black tracking-wider text-slate-400 uppercase leading-none mb-1">
+        <p className="text-[9px] sm:text-[10px] font-black tracking-wider text-slate-400 dark:text-slate-500 uppercase leading-none mb-1">
           {label}
         </p>
-        <p className="text-sm font-black text-slate-900 leading-none truncate">{value}</p>
+        <p className="text-sm sm:text-base font-black text-slate-900 dark:text-white leading-none truncate">
+          {value}
+        </p>
       </div>
     </Card>
   )
@@ -645,17 +646,17 @@ function SmallStat({ label, value, icon: Icon, color, bg }: any) {
 
 function ModeCardSkeleton() {
   return (
-    <Card className="rounded-3xl p-6 bg-white border border-slate-100 shadow-sm flex flex-col justify-between animate-pulse min-h-[220px]">
+    <Card className="rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between animate-pulse min-h-[220px]">
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <div className="h-3 bg-slate-200 rounded-md w-1/3" />
-          <div className="h-5 bg-slate-200 rounded-full w-16" />
+          <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded-md w-1/3" />
+          <div className="h-5 bg-slate-200 dark:bg-slate-800 rounded-full w-16" />
         </div>
-        <div className="h-6 bg-slate-200 rounded-lg w-2/3 mt-2" />
-        <div className="h-3 bg-slate-150 rounded-md w-1/2" />
-        <div className="h-3 bg-slate-150 rounded-md w-2/5" />
+        <div className="h-6 bg-slate-200 dark:bg-slate-800 rounded-lg w-2/3 mt-2" />
+        <div className="h-3 bg-slate-150 dark:bg-slate-800/60 rounded-md w-1/2" />
+        <div className="h-3 bg-slate-150 dark:bg-slate-800/60 rounded-md w-2/5" />
       </div>
-      <div className="h-10 bg-slate-200 rounded-xl w-full mt-6" />
+      <div className="h-10 bg-slate-200 dark:bg-slate-800 rounded-xl w-full mt-6" />
     </Card>
   )
 }
@@ -734,41 +735,41 @@ function ModeCard({ student }: { student: StudentProfile }) {
 
   if (student.mode === 'physical') {
     return (
-      <Card className="rounded-3xl p-6 bg-white border border-slate-100 shadow-xs hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
+      <Card className="rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
         <div>
           <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">
+            <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">
               Next Campus Class
             </span>
-            <Badge className="bg-emerald-50 text-emerald-600 border border-emerald-100 text-[9px] font-bold px-2 py-0.5 rounded-full">
+            <Badge className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800 text-[9px] font-bold px-2 py-0.5 rounded-full">
               ON-CAMPUS
             </Badge>
           </div>
           <div className="space-y-2">
-            <h3 className="text-lg font-black text-slate-900 uppercase leading-tight tracking-tight">
+            <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase leading-tight tracking-tight">
               {title}
             </h3>
-            <div className="flex items-center gap-2 text-slate-500">
+            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
               <CalendarClock size={14} className="text-blue-500 shrink-0" />
               <span className="text-xs font-bold">{timing}</span>
             </div>
-            <div className="flex items-center gap-2 text-slate-500">
+            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
               <MapPin size={14} className="text-rose-500 shrink-0" />
               <span className="text-xs font-bold">DSA Campus</span>
             </div>
           </div>
         </div>
 
-        <div className="mt-5 flex items-center justify-between p-3.5 bg-blue-50/60 rounded-2xl border border-blue-100/50">
+        <div className="mt-5 flex items-center justify-between p-3.5 bg-blue-50/60 dark:bg-blue-950/30 rounded-2xl border border-blue-100/50 dark:border-blue-900/40">
           <div>
-            <p className="text-[9px] font-black text-blue-500 uppercase tracking-wider leading-none">
+            <p className="text-[9px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-wider leading-none">
               Attendance
             </p>
-            <p className="text-sm font-black text-[#002EFF] mt-0.5">
+            <p className="text-sm font-black text-[#002EFF] dark:text-blue-400 mt-0.5">
               18 / 20 classes
             </p>
           </div>
-          <div className="flex items-center gap-1 bg-emerald-100/60 text-emerald-700 px-2.5 py-1 rounded-xl">
+          <div className="flex items-center gap-1 bg-emerald-100/60 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-xl">
             <Flame size={14} className="fill-emerald-500 text-emerald-500" />
             <span className="text-xs font-black">90%</span>
           </div>
@@ -778,13 +779,13 @@ function ModeCard({ student }: { student: StudentProfile }) {
   }
 
   return (
-    <Card className="rounded-3xl p-6 bg-white border border-slate-100 shadow-xs hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
+    <Card className="rounded-3xl p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow duration-300 flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between mb-4">
-          <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">
+          <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">
             Next Live Class
           </span>
-          <Badge className="bg-rose-50 text-rose-600 border border-rose-100 text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+          <Badge className="bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/50 text-[9px] font-bold px-2 py-0.5 rounded-full animate-pulse">
             ONLINE
           </Badge>
         </div>
@@ -794,13 +795,13 @@ function ModeCard({ student }: { student: StudentProfile }) {
               {todays.map((c, i) => (
                 <div
                   key={c.slotIndex}
-                  className="flex items-start justify-between gap-2 p-2 rounded-xl bg-slate-50/60 border border-slate-100"
+                  className="flex items-start justify-between gap-2 p-2.5 rounded-xl bg-slate-50/60 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800"
                 >
                   <div className="min-w-0">
-                    <h3 className="text-sm font-black text-slate-900 uppercase leading-tight truncate">
+                    <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase leading-tight truncate">
                       {c.subject}
                     </h3>
-                    <div className="flex items-center gap-1.5 text-slate-500 mt-1">
+                    <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 mt-1">
                       <CalendarClock size={12} className="text-blue-500 shrink-0" />
                       <span className="text-[11px] font-semibold">
                         Today · {c.time} (WAT)
@@ -808,11 +809,11 @@ function ModeCard({ student }: { student: StudentProfile }) {
                     </div>
                   </div>
                   {c.ongoing ? (
-                    <span className="shrink-0 text-[8px] font-black uppercase bg-rose-50 text-rose-600 border border-rose-200 px-2 py-0.5 rounded-full animate-pulse">
+                    <span className="shrink-0 text-[8px] font-black uppercase bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 px-2 py-0.5 rounded-full animate-pulse">
                       Live now
                     </span>
                   ) : i === 0 ? (
-                    <span className="shrink-0 text-[8px] font-black uppercase bg-blue-50 text-[#002EFF] border border-blue-200 px-2 py-0.5 rounded-full">
+                    <span className="shrink-0 text-[8px] font-black uppercase bg-blue-50 dark:bg-blue-950/50 text-[#002EFF] dark:text-blue-400 border border-blue-200 dark:border-blue-800 px-2 py-0.5 rounded-full">
                       Up next
                     </span>
                   ) : null}
@@ -821,16 +822,16 @@ function ModeCard({ student }: { student: StudentProfile }) {
             </div>
           ) : (
             <div className="space-y-2">
-              <h3 className="text-lg font-black text-slate-900 uppercase leading-tight tracking-tight">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase leading-tight tracking-tight">
                 {title}
               </h3>
-              <div className="flex items-center gap-2 text-slate-500">
+              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
                 <CalendarClock size={14} className="text-blue-500 shrink-0" />
                 <span className="text-xs font-bold">{timing} (WAT)</span>
               </div>
             </div>
           )}
-          <div className="flex items-center gap-2 text-slate-500">
+          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
             <Video size={14} className="text-indigo-500 shrink-0" />
             <span className="text-xs font-semibold">
               {meetLink ? 'Live on Google Meet' : 'Live on DSA Portal'}
@@ -852,7 +853,7 @@ function ModeCard({ student }: { student: StudentProfile }) {
       ) : (
         <Button
           disabled
-          className="mt-5 bg-slate-100 text-slate-400 border border-slate-200 font-bold rounded-2xl text-xs h-11 cursor-not-allowed"
+          className="mt-5 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700/60 font-bold rounded-2xl text-xs h-11 cursor-not-allowed"
         >
           {linkUploadedNotLive ? 'WAITING TO GO LIVE' : 'LINK NOT SET YET'}
           <Video className="ml-2" size={15} />
@@ -940,199 +941,150 @@ export default function OverviewUI({
 
   const holiday = now ? publicHolidayName(now) : null
   const quote = now ? getDailyQuote(now) : trackConfig.tagline
-  const dateLabel = now
-    ? now.toLocaleDateString('en-NG', {
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        year: 'numeric',
-      })
-    : ''
-  const timeLabel = now
-    ? now.toLocaleTimeString('en-NG', {
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : ''
-
-  // Format display name gracefully
-  const studentName =
-    (student as any)?.fullName ||
-    (student as any)?.firstName ||
-    'Student'
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto px-1 sm:px-0 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      
-      {/* Top Header Row with Student Name & Live Time */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white/80 backdrop-blur-md p-4 sm:p-5 rounded-3xl border border-slate-100 shadow-2xs">
-        <div className="flex items-center gap-3.5">
-          <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-[#002EFF] to-blue-500 text-white flex items-center justify-center font-black text-lg shadow-md shadow-blue-500/20 shrink-0">
-            {studentName.charAt(0).toUpperCase()}
+      {/* --- MAIN WELCOME & COUNTDOWN HERO BANNER --- */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-[#002EFF] via-blue-600 to-indigo-700 dark:from-blue-900 dark:via-indigo-900 dark:to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-blue-600/10 dark:shadow-none border border-blue-500/20">
+        <div className="relative z-10 space-y-6">
+          {/* Top Badges Row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {holiday && (
+              <span className="inline-flex items-center gap-1 bg-[#FCB900] text-[#002EFF] font-black px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wide shadow-xs">
+                🎉 {holiday}
+              </span>
+            )}
+            {streak > 0 && (
+              <Badge className="bg-[#FCB900] text-[#002EFF] hover:bg-[#FCB900] border-none font-black px-3 py-1 text-xs shadow-xs">
+                <Flame size={13} className="mr-1 fill-[#002EFF]" /> {streak} DAY STREAK
+              </Badge>
+            )}
+            <Badge className="bg-white/15 backdrop-blur-md text-white border border-white/20 font-bold px-3 py-1 text-xs">
+              <ModeIcon size={12} className="mr-1.5" />
+              {modeConfig.label}
+            </Badge>
+            {student.department && (
+              <Badge className="bg-white/15 backdrop-blur-md text-white border border-white/20 font-bold px-3 py-1 text-xs">
+                {DEPARTMENT_LABELS[student.department]}
+              </Badge>
+            )}
+            {student.yearLabel && (
+              <Badge className="bg-white/15 backdrop-blur-md text-white border border-white/20 font-bold px-3 py-1 text-xs">
+                {student.yearLabel}
+              </Badge>
+            )}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                Welcome back, {studentName}!
-              </h2>
-              <Sparkles className="size-4 text-[#FCB900] fill-[#FCB900]" />
-            </div>
-            <p className="text-xs text-slate-500 font-medium">
-              Ready to crush your learning goals today?
+
+          {/* Title & Quote */}
+          <div className="space-y-2">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-black uppercase italic tracking-tight text-white drop-shadow-xs">
+              {trackConfig.hasExam ? (
+                <>
+                  Road to <span className="text-[#FCB900]">{trackConfig.label}</span>
+                </>
+              ) : (
+                <span className="text-[#FCB900]">{trackConfig.fullName}</span>
+              )}
+            </h1>
+            <p className="text-blue-100 dark:text-blue-200 text-xs sm:text-sm max-w-xl font-medium leading-relaxed opacity-90 italic">
+              &ldquo;{quote}&rdquo;
             </p>
+          </div>
+
+          {/* Inline Integrated Exam Countdown / Track Focus */}
+          <div className="pt-2 border-t border-white/15 max-w-2xl">
+            {trackConfig.hasExam ? (
+              <div className="space-y-3">
+                <span className="text-[10px] font-black uppercase tracking-widest text-blue-200 block">
+                  {trackConfig.examLabel} COUNTDOWN
+                </span>
+                {time.elapsed ? (
+                  <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md p-3.5 rounded-2xl border border-white/20">
+                    <CheckCircle2 size={24} className="text-emerald-400 shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-white uppercase leading-tight">
+                        Exam period is here
+                      </p>
+                      <p className="text-[11px] text-blue-100 font-medium">
+                        Best of luck in your {trackConfig.fullName}. Keep revising with past questions.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="flex flex-col items-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px]">
+                      <span className="text-2xl sm:text-3xl font-black text-white tracking-tighter tabular-nums">
+                        {time.days}
+                      </span>
+                      <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-0.5">DAYS</span>
+                    </div>
+                    <span className="text-lg font-black text-white/40">:</span>
+                    <div className="flex flex-col items-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px]">
+                      <span className="text-2xl sm:text-3xl font-black text-white tracking-tighter tabular-nums">
+                        {String(time.hours).padStart(2, '0')}
+                      </span>
+                      <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-0.5">HRS</span>
+                    </div>
+                    <span className="text-lg font-black text-white/40">:</span>
+                    <div className="flex flex-col items-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px]">
+                      <span className="text-2xl sm:text-3xl font-black text-white tracking-tighter tabular-nums">
+                        {String(time.minutes).padStart(2, '0')}
+                      </span>
+                      <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-0.5">MIN</span>
+                    </div>
+                    <span className="text-lg font-black text-white/40">:</span>
+                    <div className="flex flex-col items-center bg-[#FCB900] text-[#002EFF] border border-yellow-300 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px] shadow-md">
+                      <span className="text-2xl sm:text-3xl font-black tracking-tighter tabular-nums">
+                        {String(time.seconds).padStart(2, '0')}
+                      </span>
+                      <span className="text-[8px] font-black uppercase mt-0.5 opacity-80">SEC</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md p-3.5 rounded-2xl border border-white/20">
+                <div className="h-9 w-9 rounded-xl bg-[#FCB900] text-[#002EFF] flex items-center justify-center shrink-0">
+                  <trackConfig.icon size={20} strokeWidth={2.5} />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-white uppercase leading-tight">
+                    {student.yearLabel ?? trackConfig.label} • {trackConfig.examLabel} FOCUS
+                  </p>
+                  <p className="text-[11px] text-blue-100 font-medium mt-0.5">
+                    {trackConfig.subjectRule}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            <Button
+              onClick={() => setView('quizzes')}
+              className="bg-[#FCB900] hover:bg-yellow-400 text-[#002EFF] font-black rounded-2xl text-xs px-6 h-11 shadow-lg shadow-yellow-500/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>TAKE QUIZZES</span>
+              <BrainCircuit size={16} />
+            </Button>
+
+            {isDSAite && (
+              <Badge
+                variant="outline"
+                className="border-white/30 text-white font-bold px-3.5 py-2 rounded-xl text-xs backdrop-blur-xs"
+              >
+                PRO MEMBER
+              </Badge>
+            )}
           </div>
         </div>
 
-        {now && (
-          <div className="flex items-center gap-2.5 self-start sm:self-auto bg-slate-50 px-3.5 py-2 rounded-2xl border border-slate-100 text-slate-600 text-xs font-semibold">
-            <CalendarClock size={15} className="text-[#002EFF]" />
-            <span>{dateLabel}</span>
-            <span className="opacity-30">•</span>
-            <span className="tabular-nums font-bold text-slate-900">{timeLabel}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* --- MAIN WELCOME BANNER --- */}
-        <section className="lg:col-span-2 relative overflow-hidden bg-gradient-to-br from-[#002EFF] via-blue-600 to-indigo-700 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-blue-600/10 flex flex-col justify-between">
-          <div className="relative z-10 space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {holiday && (
-                <span className="inline-flex items-center gap-1 bg-[#FCB900] text-[#002EFF] font-black px-2.5 py-1 rounded-full text-[10px] uppercase tracking-wide shadow-xs">
-                  🎉 {holiday}
-                </span>
-              )}
-              {streak > 0 && (
-                <Badge className="bg-[#FCB900] text-[#002EFF] hover:bg-[#FCB900] border-none font-black px-3 py-1 text-xs shadow-xs">
-                  <Flame size={13} className="mr-1 fill-[#002EFF]" /> {streak} DAY STREAK
-                </Badge>
-              )}
-              <Badge className="bg-white/15 backdrop-blur-md text-white border border-white/20 font-bold px-3 py-1 text-xs">
-                <ModeIcon size={12} className="mr-1.5" />
-                {modeConfig.label}
-              </Badge>
-              {student.department && (
-                <Badge className="bg-white/15 backdrop-blur-md text-white border border-white/20 font-bold px-3 py-1 text-xs">
-                  {DEPARTMENT_LABELS[student.department]}
-                </Badge>
-              )}
-              {student.yearLabel && (
-                <Badge className="bg-white/15 backdrop-blur-md text-white border border-white/20 font-bold px-3 py-1 text-xs">
-                  {student.yearLabel}
-                </Badge>
-              )}
-            </div>
-
-            <div className="space-y-1">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-black uppercase italic tracking-tight text-white drop-shadow-xs">
-                {trackConfig.hasExam ? (
-                  <>
-                    Road to <span className="text-[#FCB900]">{trackConfig.label}</span>
-                  </>
-                ) : (
-                  <span className="text-[#FCB900]">{trackConfig.fullName}</span>
-                )}
-              </h1>
-              <p className="text-blue-100 text-xs sm:text-sm max-w-lg font-medium leading-relaxed opacity-90 italic">
-                &ldquo;{quote}&rdquo;
-              </p>
-            </div>
-
-            <div className="pt-2 flex flex-wrap items-center gap-3">
-              <Button
-                onClick={() => setView('quizzes')}
-                className="bg-[#FCB900] hover:bg-yellow-400 text-[#002EFF] font-black rounded-2xl text-xs px-6 h-11 shadow-lg shadow-yellow-500/20 active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
-              >
-                <span>TAKE QUIZZES</span>
-                <BrainCircuit size={16} />
-              </Button>
-
-              {isDSAite && (
-                <Badge
-                  variant="outline"
-                  className="border-white/30 text-white font-bold px-3.5 py-2 rounded-xl text-xs backdrop-blur-xs"
-                >
-                  PRO MEMBER
-                </Badge>
-              )}
-            </div>
-          </div>
-
-          <Target
-            size={180}
-            className="text-white/10 absolute -right-6 -bottom-6 rotate-12 pointer-events-none"
-          />
-        </section>
-
-        {/* --- DYNAMIC COUNTDOWN / PROGRAMME CARD --- */}
-        <Card className="rounded-3xl p-6 bg-white border border-slate-100 shadow-xs flex flex-col items-center justify-center text-center overflow-hidden">
-          {!trackConfig.hasExam ? (
-            <div className="flex flex-col items-center gap-2 py-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-blue-600">
-                {trackConfig.examLabel} FOCUS
-              </span>
-              <div className="h-14 w-14 rounded-2xl bg-blue-50 text-[#002EFF] flex items-center justify-center my-2 shadow-inner">
-                <trackConfig.icon size={26} strokeWidth={2.2} />
-              </div>
-              <p className="text-base font-black text-slate-800 uppercase leading-none">
-                {student.yearLabel ?? trackConfig.label}
-              </p>
-              <p className="text-xs font-medium text-slate-400 max-w-[200px]">
-                {trackConfig.subjectRule}
-              </p>
-            </div>
-          ) : (
-            <div className="w-full">
-              <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 block mb-4">
-                {trackConfig.examLabel} COUNTDOWN
-              </span>
-
-              {time.elapsed ? (
-                <div className="flex flex-col items-center gap-2 py-3">
-                  <CheckCircle2 size={36} className="text-emerald-500" />
-                  <p className="text-sm font-black text-slate-800 uppercase">
-                    Exam period is here
-                  </p>
-                  <p className="text-xs font-medium text-slate-400 max-w-[180px]">
-                    Best of luck in your {trackConfig.fullName}. Keep revising with past questions.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center gap-2 sm:gap-3 py-2">
-                  <div className="flex flex-col items-center bg-slate-50 border border-slate-100 rounded-2xl p-2.5 min-w-[58px]">
-                    <span className="text-2xl sm:text-3xl font-black text-[#002EFF] tracking-tighter tabular-nums">
-                      {time.days}
-                    </span>
-                    <span className="text-[8px] font-extrabold text-slate-400 uppercase mt-0.5">DAYS</span>
-                  </div>
-                  <span className="text-lg font-black text-slate-300">:</span>
-                  <div className="flex flex-col items-center bg-slate-50 border border-slate-100 rounded-2xl p-2.5 min-w-[58px]">
-                    <span className="text-2xl sm:text-3xl font-black text-[#002EFF] tracking-tighter tabular-nums">
-                      {String(time.hours).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-extrabold text-slate-400 uppercase mt-0.5">HRS</span>
-                  </div>
-                  <span className="text-lg font-black text-slate-300">:</span>
-                  <div className="flex flex-col items-center bg-slate-50 border border-slate-100 rounded-2xl p-2.5 min-w-[58px]">
-                    <span className="text-2xl sm:text-3xl font-black text-[#002EFF] tracking-tighter tabular-nums">
-                      {String(time.minutes).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-extrabold text-slate-400 uppercase mt-0.5">MIN</span>
-                  </div>
-                  <span className="text-lg font-black text-slate-300">:</span>
-                  <div className="flex flex-col items-center bg-amber-50 border border-amber-100 rounded-2xl p-2.5 min-w-[58px]">
-                    <span className="text-2xl sm:text-3xl font-black text-[#FCB900] tracking-tighter tabular-nums">
-                      {String(time.seconds).padStart(2, '0')}
-                    </span>
-                    <span className="text-[8px] font-extrabold text-amber-600/70 uppercase mt-0.5">SEC</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </Card>
-      </div>
+        <Target
+          size={200}
+          className="text-white/10 dark:text-white/5 absolute -right-8 -bottom-8 rotate-12 pointer-events-none"
+        />
+      </section>
 
       {/* --- MODE-SPECIFIC + STATS --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1141,11 +1093,11 @@ export default function OverviewUI({
         <div className="lg:col-span-2 grid grid-cols-2 gap-3.5 content-start">
           {isPerfLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="p-4 rounded-2xl border border-slate-100 bg-white animate-pulse flex items-center gap-3">
-                <div className="h-10 w-10 bg-slate-200 rounded-xl" />
+              <Card key={i} className="p-4 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 animate-pulse flex items-center gap-3">
+                <div className="h-10 w-10 bg-slate-200 dark:bg-slate-800 rounded-xl" />
                 <div className="space-y-1.5 flex-1">
-                  <div className="h-2 bg-slate-200 rounded-md w-1/2" />
-                  <div className="h-4 bg-slate-200 rounded-md w-2/3" />
+                  <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-md w-1/2" />
+                  <div className="h-4 bg-slate-200 dark:bg-slate-800 rounded-md w-2/3" />
                 </div>
               </Card>
             ))
@@ -1155,42 +1107,42 @@ export default function OverviewUI({
                 label="Avg Score"
                 value={perf?.avg != null ? `${perf.avg}%` : '—'}
                 icon={Timer}
-                color="text-blue-600"
-                bg="bg-blue-50"
+                color="text-blue-600 dark:text-blue-400"
+                bg="bg-blue-50 dark:bg-blue-950/50"
               />
               <SmallStat
                 label="Progress"
                 value={perf ? `${perf.progress}%` : '—'}
                 icon={Zap}
-                color="text-amber-500"
-                bg="bg-amber-50"
+                color="text-amber-500 dark:text-amber-400"
+                bg="bg-amber-50 dark:bg-amber-950/50"
               />
               <SmallStat
                 label="Attendance"
                 value={perf && perf.total ? `${perf.rate}%` : '—'}
                 icon={CheckCircle2}
-                color="text-emerald-600"
-                bg="bg-emerald-50"
+                color="text-emerald-600 dark:text-emerald-400"
+                bg="bg-emerald-50 dark:bg-emerald-950/50"
               />
               <SmallStat
                 label="Present"
                 value={perf ? `${perf.present}/${perf.total}` : '—'}
                 icon={CalendarCheck}
-                color="text-orange-500"
-                bg="bg-orange-50"
+                color="text-orange-500 dark:text-orange-400"
+                bg="bg-orange-50 dark:bg-orange-950/50"
               />
             </>
           )}
 
-          <Card className="col-span-2 p-4 rounded-2xl border border-blue-100/60 bg-gradient-to-r from-blue-50/40 to-indigo-50/20 flex items-center gap-3.5 shadow-2xs">
-            <div className="h-10 w-10 bg-white rounded-xl flex items-center justify-center shrink-0 text-[#002EFF] shadow-xs border border-blue-100">
+          <Card className="col-span-2 p-4 rounded-2xl border border-blue-100/60 dark:border-blue-900/40 bg-gradient-to-r from-blue-50/40 to-indigo-50/20 dark:from-slate-900 dark:to-blue-950/20 flex items-center gap-3.5 shadow-2xs">
+            <div className="h-10 w-10 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0 text-[#002EFF] dark:text-blue-400 shadow-xs border border-blue-100 dark:border-slate-700">
               <trackConfig.icon size={20} strokeWidth={2.5} />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[9px] font-black text-blue-500 uppercase tracking-wider leading-none mb-1">
+              <p className="text-[9px] font-black text-blue-500 dark:text-blue-400 uppercase tracking-wider leading-none mb-1">
                 Your Track
               </p>
-              <p className="text-xs sm:text-sm font-black text-slate-800 leading-none truncate">
+              <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 leading-none truncate">
                 {trackConfig.fullName}
                 {student.department
                   ? ` · ${DEPARTMENT_LABELS[student.department]} Department`
