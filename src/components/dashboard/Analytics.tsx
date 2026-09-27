@@ -667,19 +667,34 @@ import { isDemoToken } from '@/lib/demoAccounts'
 import { dsaApi } from '@/lib/api'
 import { normaliseTrack } from '@/lib/studentProfile'
 
+/* ---------------- Helper Color Utilities ---------------- */
+
+function getScoreColor(pct: number) {
+  if (pct < 50) return { bg: 'bg-rose-500', text: 'text-rose-500', badge: 'bg-rose-500/10 text-rose-500 border-rose-500/20' }
+  if (pct < 70) return { bg: 'bg-amber-400', text: 'text-amber-500', badge: 'bg-amber-500/10 text-amber-500 border-amber-500/20' }
+  return { bg: 'bg-emerald-500', text: 'text-emerald-500', badge: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' }
+}
+
+function getBarColor(pct: number, tintDanger: boolean) {
+  if (!tintDanger) return 'bg-[#002EFF]'
+  if (pct < 50) return 'bg-rose-500'
+  if (pct < 70) return 'bg-amber-400'
+  return 'bg-[#002EFF]'
+}
+
 /* ---------------- Skeleton Components ---------------- */
 
 function Skeleton({ className }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse bg-slate-200/80 rounded-lg ${className ?? ''}`}
+      className={`animate-pulse bg-slate-200/80 dark:bg-slate-800 rounded-lg ${className ?? ''}`}
     />
   )
 }
 
 function StatTileSkeleton() {
   return (
-    <Card className='p-4 rounded-2xl border-none shadow-sm bg-white'>
+    <Card className='p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
       <div className='flex items-center gap-3'>
         <Skeleton className='h-10 w-10 rounded-xl shrink-0' />
         <div className='space-y-1.5 flex-1'>
@@ -718,7 +733,7 @@ function StudentAnalyticsSkeleton() {
         ))}
       </div>
 
-      <Card className='p-6 rounded-3xl border-none shadow-sm bg-white space-y-4'>
+      <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900 space-y-4'>
         <Skeleton className='h-3 w-36' />
         <div className='space-y-3'>
           {Array.from({ length: 4 }).map((_, i) => (
@@ -727,7 +742,7 @@ function StudentAnalyticsSkeleton() {
         </div>
       </Card>
 
-      <Card className='p-6 rounded-3xl border-none shadow-sm bg-white space-y-3'>
+      <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900 space-y-3'>
         <Skeleton className='h-3 w-40 mb-2' />
         {Array.from({ length: 3 }).map((_, i) => (
           <Skeleton key={i} className='h-10 w-full rounded-xl' />
@@ -754,7 +769,7 @@ function TutorAnalyticsSkeleton() {
         ))}
       </div>
 
-      <Card className='p-6 rounded-3xl border-none shadow-sm bg-white space-y-4'>
+      <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900 space-y-4'>
         <Skeleton className='h-3 w-44' />
         <div className='space-y-3'>
           {Array.from({ length: 5 }).map((_, i) => (
@@ -763,7 +778,7 @@ function TutorAnalyticsSkeleton() {
         </div>
       </Card>
 
-      <Card className='rounded-3xl border-none shadow-sm bg-white overflow-hidden p-6 space-y-4'>
+      <Card className='rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900 overflow-hidden p-6 space-y-4'>
         <Skeleton className='h-3 w-40' />
         <div className='space-y-2'>
           {Array.from({ length: 4 }).map((_, i) => (
@@ -799,7 +814,7 @@ function StatTile({
   tint: string
 }) {
   return (
-    <Card className='p-4 rounded-2xl border-none shadow-sm bg-white'>
+    <Card className='p-4 rounded-2xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
       <div className='flex items-center gap-3'>
         <div
           className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${tint}`}
@@ -807,11 +822,11 @@ function StatTile({
           <Icon size={18} strokeWidth={2.5} />
         </div>
         <div>
-          <p className='text-[8px] font-black text-gray-400 uppercase leading-none mb-1'>
+          <p className='text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase leading-none mb-1'>
             {label}
           </p>
-          <p className='text-lg font-black text-gray-900 leading-none'>{value}</p>
-          {sub && <p className='text-[9px] font-bold text-slate-400 mt-1'>{sub}</p>}
+          <p className='text-lg font-black text-slate-900 dark:text-slate-100 leading-none'>{value}</p>
+          {sub && <p className='text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-1'>{sub}</p>}
         </div>
       </div>
     </Card>
@@ -827,16 +842,16 @@ function Bar({
   pct: number
   tintDanger?: boolean
 }) {
+  const barBg = getBarColor(pct, tintDanger)
+
   return (
     <div className='flex items-center gap-3'>
-      <span className='w-28 text-[10px] font-black text-gray-600 uppercase text-right truncate'>
+      <span className='w-28 text-[10px] font-black text-slate-600 dark:text-slate-400 uppercase text-right truncate'>
         {label}
       </span>
-      <div className='flex-1 h-6 bg-slate-100 rounded-lg overflow-hidden'>
+      <div className='flex-1 h-6 bg-slate-100 dark:bg-slate-800/80 rounded-lg overflow-hidden'>
         <div
-          className={`h-full rounded-lg flex items-center justify-end pr-2 transition-all ${
-            tintDanger && pct < 70 ? 'bg-amber-400' : 'bg-[#002EFF]'
-          }`}
+          className={`h-full rounded-lg flex items-center justify-end pr-2 transition-all ${barBg}`}
           style={{ width: `${Math.max(pct, 6)}%` }}
         >
           <span className='text-[9px] font-black text-white'>{pct}%</span>
@@ -849,8 +864,10 @@ function Bar({
 function LiveBadge({ live }: { live: boolean }) {
   return (
     <Badge
-      className={`text-[8px] font-black shrink-0 ${
-        live ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'
+      className={`text-[8px] font-black shrink-0 border ${
+        live
+          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
       }`}
     >
       {live ? 'Live' : 'Local'}
@@ -1010,10 +1027,10 @@ function StudentAnalytics({
     <div className='space-y-6'>
       <div className='flex items-start justify-between gap-3'>
         <div>
-          <h2 className='text-2xl font-black text-[#002EFF] italic uppercase'>
+          <h2 className='text-2xl font-black text-[#002EFF] dark:text-blue-400 italic uppercase'>
             My Performance
           </h2>
-          <p className='text-[11px] font-bold text-slate-400'>
+          <p className='text-[11px] font-bold text-slate-400 dark:text-slate-500'>
             Your progress, grades &amp; attendance at a glance.
           </p>
         </div>
@@ -1025,14 +1042,14 @@ function StudentAnalytics({
           label='Course Progress'
           value={`${perf.progress}%`}
           icon={TrendingUp}
-          tint='bg-blue-50 text-blue-600'
+          tint='bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
         />
         <StatTile
           label='Average Score'
           value={perf.average != null ? `${perf.average}%` : '—'}
           sub={perf.average != null ? undefined : 'no grades yet'}
           icon={Award}
-          tint='bg-emerald-50 text-emerald-600'
+          tint='bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
         />
         <StatTile
           label='Attendance'
@@ -1043,23 +1060,23 @@ function StudentAnalytics({
               : 'no sessions yet'
           }
           icon={CalendarCheck}
-          tint='bg-amber-50 text-amber-600'
+          tint='bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
         />
         <StatTile
           label='Graded'
           value={perf.grades.length}
           sub='assignments'
           icon={ClipboardCheck}
-          tint='bg-purple-50 text-purple-600'
+          tint='bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400'
         />
       </div>
 
-      <Card className='p-6 rounded-3xl border-none shadow-sm bg-white'>
-        <p className='text-[10px] font-black uppercase text-gray-400 mb-4 flex items-center gap-2'>
-          <BookOpen size={13} className='text-[#002EFF]' /> Average by subject
+      <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
+        <p className='text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-2'>
+          <BookOpen size={13} className='text-[#002EFF] dark:text-blue-400' /> Average by subject
         </p>
         {perf.perSubject.length === 0 ? (
-          <p className='text-[11px] font-bold text-slate-400'>
+          <p className='text-[11px] font-bold text-slate-400 dark:text-slate-500'>
             No graded scores yet.
           </p>
         ) : (
@@ -1072,28 +1089,27 @@ function StudentAnalytics({
       </Card>
 
       {perf.grades.length > 0 && (
-        <Card className='p-6 rounded-3xl border-none shadow-sm bg-white'>
-          <p className='text-[10px] font-black uppercase text-gray-400 mb-4'>
+        <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
+          <p className='text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 mb-4'>
             Graded assignments
           </p>
           <div className='space-y-2'>
-            {perf.grades.map((g) => (
-              <div
-                key={g.key}
-                className='flex items-center justify-between p-3 rounded-xl bg-slate-50/70'
-              >
-                <span className='text-[11px] font-black text-gray-700'>
-                  {g.title}
-                </span>
-                <span
-                  className={`text-[11px] font-black ${
-                    g.percent >= 70 ? 'text-emerald-600' : 'text-amber-600'
-                  }`}
+            {perf.grades.map((g) => {
+              const color = getScoreColor(g.percent)
+              return (
+                <div
+                  key={g.key}
+                  className='flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50'
                 >
-                  {g.score}/{g.maxScore} · {g.percent}%
-                </span>
-              </div>
-            ))}
+                  <span className='text-[11px] font-black text-slate-700 dark:text-slate-200'>
+                    {g.title}
+                  </span>
+                  <span className={`text-[11px] font-black ${color.text}`}>
+                    {g.score}/{g.maxScore} · {g.percent}%
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </Card>
       )}
@@ -1236,10 +1252,10 @@ function TutorAnalytics() {
     <div className='space-y-6'>
       <div className='flex items-start justify-between gap-3'>
         <div>
-          <h2 className='text-2xl font-black text-[#002EFF] italic uppercase'>
+          <h2 className='text-2xl font-black text-[#002EFF] dark:text-blue-400 italic uppercase'>
             Class Analytics
           </h2>
-          <p className='text-[11px] font-bold text-slate-400'>
+          <p className='text-[11px] font-bold text-slate-400 dark:text-slate-500'>
             How your students are performing.
           </p>
         </div>
@@ -1251,37 +1267,37 @@ function TutorAnalytics() {
           label='Students'
           value={perf.studentsCount}
           icon={Users}
-          tint='bg-blue-50 text-blue-600'
+          tint='bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400'
         />
         <StatTile
           label='Class Avg'
           value={perf.classAverage != null ? `${perf.classAverage}%` : '—'}
           icon={BarChart3}
-          tint='bg-emerald-50 text-emerald-600'
+          tint='bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
         />
         <StatTile
           label='To Grade'
           value={perf.toGradeCount}
           sub='submissions'
           icon={ClipboardCheck}
-          tint='bg-amber-50 text-amber-600'
+          tint='bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
         />
         <StatTile
           label='At Risk'
           value={perf.atRisk.length}
           sub='avg below 70%'
           icon={AlertTriangle}
-          tint='bg-rose-50 text-rose-600'
+          tint='bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400'
         />
       </div>
 
-      <Card className='p-6 rounded-3xl border-none shadow-sm bg-white'>
-        <p className='text-[10px] font-black uppercase text-gray-400 mb-4'>
+      <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
+        <p className='text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 mb-4'>
           Average score by student
         </p>
         <div className='space-y-3'>
           {withAvg.length === 0 ? (
-            <p className='text-[11px] font-bold text-slate-400'>
+            <p className='text-[11px] font-bold text-slate-400 dark:text-slate-500'>
               No graded scores yet.
             </p>
           ) : (
@@ -1292,21 +1308,21 @@ function TutorAnalytics() {
         </div>
       </Card>
 
-      <Card className='rounded-3xl border-none shadow-sm bg-white overflow-hidden'>
-        <div className='px-6 py-4 border-b border-slate-50'>
-          <p className='text-[10px] font-black uppercase text-gray-400'>
+      <Card className='rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900 overflow-hidden'>
+        <div className='px-6 py-4 border-b border-slate-100 dark:border-slate-800'>
+          <p className='text-[10px] font-black uppercase text-slate-400 dark:text-slate-500'>
             Assignments by course
           </p>
         </div>
         {perf.perCourse.length === 0 ? (
-          <p className='px-6 py-6 text-[11px] font-bold text-slate-400'>
+          <p className='px-6 py-6 text-[11px] font-bold text-slate-400 dark:text-slate-500'>
             No assignments created yet.
           </p>
         ) : (
           <div className='overflow-x-auto'>
             <table className='w-full text-left min-w-[520px]'>
               <thead>
-                <tr className='bg-slate-50/60 text-[9px] font-black uppercase text-gray-400'>
+                <tr className='bg-slate-50/60 dark:bg-slate-800/40 text-[9px] font-black uppercase text-slate-400 dark:text-slate-500'>
                   <th className='px-6 py-3'>Course</th>
                   <th className='px-4 py-3'>Assignments</th>
                   <th className='px-4 py-3'>Submissions</th>
@@ -1314,33 +1330,29 @@ function TutorAnalytics() {
                   <th className='px-4 py-3'>Avg</th>
                 </tr>
               </thead>
-              <tbody className='divide-y divide-slate-50'>
+              <tbody className='divide-y divide-slate-100 dark:divide-slate-800/60'>
                 {perf.perCourse.map((c) => (
                   <tr key={c.title}>
-                    <td className='px-6 py-3 text-xs font-black text-gray-800'>
+                    <td className='px-6 py-3 text-xs font-black text-slate-800 dark:text-slate-200'>
                       {c.title}
                     </td>
-                    <td className='px-4 py-3 text-xs font-bold text-slate-600'>
+                    <td className='px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-400'>
                       {c.assignments}
                     </td>
-                    <td className='px-4 py-3 text-xs font-bold text-slate-600'>
+                    <td className='px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-400'>
                       {c.submissions}
                     </td>
-                    <td className='px-4 py-3 text-xs font-bold text-slate-600'>
+                    <td className='px-4 py-3 text-xs font-bold text-slate-600 dark:text-slate-400'>
                       {c.graded}
                     </td>
                     <td className='px-4 py-3'>
                       {c.average == null ? (
-                        <span className='text-[10px] font-bold text-slate-300'>
+                        <span className='text-[10px] font-bold text-slate-300 dark:text-slate-600'>
                           —
                         </span>
                       ) : (
                         <Badge
-                          className={`text-[8px] font-black ${
-                            c.average >= 70
-                              ? 'bg-emerald-50 text-emerald-600'
-                              : 'bg-amber-50 text-amber-600'
-                          }`}
+                          className={`text-[8px] font-black border ${getScoreColor(c.average).badge}`}
                         >
                           {c.average}%
                         </Badge>
@@ -1355,23 +1367,26 @@ function TutorAnalytics() {
       </Card>
 
       {perf.atRisk.length > 0 && (
-        <Card className='p-6 rounded-3xl border-none shadow-sm bg-white'>
-          <p className='text-[10px] font-black uppercase text-gray-400 mb-3 flex items-center gap-2'>
+        <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
+          <p className='text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 mb-3 flex items-center gap-2'>
             <AlertTriangle size={13} className='text-rose-500' /> Students needing
             attention
           </p>
           <div className='space-y-2'>
-            {perf.atRisk.map((s) => (
-              <div
-                key={s.key}
-                className='flex items-center justify-between p-3 rounded-xl bg-rose-50/60'
-              >
-                <span className='text-xs font-black text-gray-800'>{s.name}</span>
-                <span className='text-xs font-black text-rose-500'>
-                  {s.avg}% avg
-                </span>
-              </div>
-            ))}
+            {perf.atRisk.map((s) => {
+              const color = getScoreColor(s.avg)
+              return (
+                <div
+                  key={s.key}
+                  className='flex items-center justify-between p-3 rounded-xl bg-rose-50/60 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20'
+                >
+                  <span className='text-xs font-black text-slate-800 dark:text-slate-200'>{s.name}</span>
+                  <span className={`text-xs font-black ${color.text}`}>
+                    {s.avg}% avg
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </Card>
       )}
