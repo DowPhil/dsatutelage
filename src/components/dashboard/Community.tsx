@@ -171,7 +171,7 @@ function withMentions(text: string, own: boolean) {
     part.startsWith('@') ? (
       <span
         key={i}
-        className={`font-black ${own ? 'text-white underline decoration-white/40' : 'text-[#002EFF]'}`}
+        className={`font-bold ${own ? 'text-white underline decoration-white/40' : 'text-[#002EFF]'}`}
       >
         {part}
       </span>
@@ -282,7 +282,7 @@ function DeptChips({
 }) {
   const everyone = value.length === 0 || value.length === DEPARTMENTS.length
   const chip = (on: boolean) =>
-    `px-2.5 py-1.5 rounded-full text-[10px] font-black uppercase transition-colors disabled:opacity-50 ${
+    `px-2.5 py-1.5 rounded-full text-[10px] font-bold uppercase transition-colors disabled:opacity-50 ${
       on ? 'bg-[#002EFF] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
     }`
   return (
@@ -671,13 +671,16 @@ export default function Community({
     load(true)
     loadSettings()
     // Every open tab polls, so a class of a few hundred is a few hundred
-    // pollers. Skip the tick while the tab is hidden — nobody is reading it —
-    // and catch up the moment it is shown again.
+    // pollers. This is only the fallback: while the socket is live the tick
+    // stands down entirely (`liveRef`), and it also skips while the tab is
+    // hidden — nobody is reading it — catching up the moment it is shown
+    // again. A slower cadence keeps the server load light when the socket is
+    // down on a weak network.
     const poll = setInterval(() => {
       if (document.hidden || liveRef.current) return
       load(false)
       loadSettings()
-    }, 6000)
+    }, 12000)
     const onFocus = () => {
       load(false)
       loadSettings()
@@ -743,9 +746,11 @@ export default function Community({
     setOnline([])
     setTypingNames([])
     if (!liveRef.current) beat()
+    // Presence also arrives over the socket ('presence' events), so this ping
+    // only runs as a fallback when the socket is down — a slow beat is plenty.
     const timer = setInterval(() => {
       if (!document.hidden && !liveRef.current) beat()
-    }, 20000)
+    }, 30000)
     return () => clearInterval(timer)
   }, [beat])
 
@@ -1417,7 +1422,20 @@ export default function Community({
   // beat as the messages (slower — it is only a badge).
   useEffect(() => {
     loadChannels()
-    const poll = setInterval(() => { if (!document.hidden) loadChannels() }, 30000)
+    // While the socket is live the open room updates itself over the wire; the
+    // channel list is only needed here for the unread badges on the *other*
+    // rooms, so refresh it far less often (once a minute). When the socket is
+    // down, keep the badges reasonably fresh. Either way the tab must be
+    // visible. `lastRun` lives in the effect closure, so it persists across
+    // ticks without another ref.
+    let lastRun = Date.now()
+    const poll = setInterval(() => {
+      if (document.hidden) return
+      const gap = liveRef.current ? 60000 : 25000
+      if (Date.now() - lastRun < gap) return
+      lastRun = Date.now()
+      loadChannels()
+    }, 10000)
     return () => clearInterval(poll)
   }, [loadChannels])
 
@@ -1670,7 +1688,7 @@ export default function Community({
   const managePanel = (
     <div className='flex h-full flex-col'>
       <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3'>
-        <p className='flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-slate-500'>
+        <p className='flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500'>
           <SlidersHorizontal size={13} /> Community management
         </p>
         <button
@@ -1690,17 +1708,17 @@ export default function Community({
           >
             {podIcon(active)}
           </div>
-          <p className='text-[14px] font-black text-slate-900'>{active.name}</p>
+          <p className='text-[14px] font-bold text-slate-900'>{active.name}</p>
           <p className='mt-0.5 text-[10px] font-medium text-slate-500'>
             {members.length} member{members.length === 1 ? '' : 's'} · {online.length} online
           </p>
           <div className='mt-2 flex flex-wrap justify-center gap-1'>
             {active.category && (
-              <span className='rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-black uppercase text-[#002EFF]'>
+              <span className='rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase text-[#002EFF]'>
                 {categoryLabel(active.category)}
               </span>
             )}
-            <span className='rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-600'>
+            <span className='rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-600'>
               {access === 'all' ? 'All students' : 'Paid only'}
             </span>
           </div>
@@ -1708,7 +1726,7 @@ export default function Community({
 
         {/* Name */}
         <div>
-          <p className='mb-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400'>
+          <p className='mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400'>
             Channel name
           </p>
           <div className='flex items-center gap-2'>
@@ -1721,7 +1739,7 @@ export default function Community({
             <button
               onClick={renameChannel}
               disabled={!renameValue.trim() || renaming}
-              className='h-10 shrink-0 rounded-xl bg-[#002EFF] px-3 text-[10px] font-black uppercase text-white hover:bg-blue-700 disabled:opacity-50'
+              className='h-10 shrink-0 rounded-xl bg-[#002EFF] px-3 text-[10px] font-bold uppercase text-white hover:bg-blue-700 disabled:opacity-50'
             >
               {renaming ? <Loader2 size={12} className='animate-spin' /> : 'Save'}
             </button>
@@ -1730,7 +1748,7 @@ export default function Community({
 
         {/* Who may open the Community at all */}
         <div>
-          <p className='mb-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400'>
+          <p className='mb-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-400'>
             Access permission
           </p>
           <div className='grid grid-cols-2 gap-2'>
@@ -1738,7 +1756,7 @@ export default function Community({
               <button
                 key={a}
                 onClick={() => changeAccess(a)}
-                className={`h-10 rounded-xl border text-[10px] font-black uppercase transition-colors ${
+                className={`h-10 rounded-xl border text-[10px] font-bold uppercase transition-colors ${
                   access === a
                     ? 'border-[#002EFF] bg-blue-50 text-[#002EFF]'
                     : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
@@ -1754,7 +1772,7 @@ export default function Community({
           <>
             {/* Departments */}
             <div>
-              <p className='mb-1.5 flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-slate-400'>
+              <p className='mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-slate-400'>
                 Target departments
                 {scopeSaving && <Loader2 size={11} className='animate-spin' />}
               </p>
@@ -1768,7 +1786,7 @@ export default function Community({
             {/* Tutors */}
             <div>
               <div className='mb-1.5 flex items-center justify-between'>
-                <p className='text-[9px] font-black uppercase tracking-widest text-slate-400'>
+                <p className='text-[10px] font-bold uppercase tracking-wide text-slate-400'>
                   Assigned tutors
                 </p>
                 <select
@@ -1778,7 +1796,7 @@ export default function Community({
                     const id = e.target.value
                     if (id) saveScope({ tutors: [...(active.tutors ?? []), id] })
                   }}
-                  className='h-7 max-w-[140px] rounded-lg bg-transparent text-[10px] font-black text-[#002EFF] outline-none'
+                  className='h-7 max-w-[140px] rounded-lg bg-transparent text-[10px] font-bold text-[#002EFF] outline-none'
                   aria-label='Add a tutor'
                 >
                   <option value=''>+ Add tutor</option>
@@ -1806,7 +1824,7 @@ export default function Community({
                         key={id}
                         className='flex items-center gap-2 rounded-xl bg-slate-50 px-2.5 py-2'
                       >
-                        <span className='grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#002EFF] text-[9px] font-black text-white'>
+                        <span className='grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#002EFF] text-[10px] font-bold text-white'>
                           {name.slice(0, 2).toUpperCase()}
                         </span>
                         <span className='min-w-0 flex-1 truncate text-[11px] font-bold text-slate-700'>
@@ -1846,7 +1864,7 @@ export default function Community({
                 )
                   deleteChannel(active.id)
               }}
-              className='flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 py-2.5 text-[10px] font-black uppercase text-rose-600 hover:bg-rose-100'
+              className='flex w-full items-center justify-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 py-2.5 text-[10px] font-bold uppercase text-rose-600 hover:bg-rose-100'
             >
               <Trash2 size={13} /> Delete community
             </button>
@@ -1861,7 +1879,7 @@ export default function Community({
         <div className='border-t border-slate-100 pt-4'>
           <button
             onClick={() => setNewOpen((o) => !o)}
-            className='flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-50 py-2.5 text-[10px] font-black uppercase text-emerald-600 hover:bg-emerald-100'
+            className='flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-50 py-2.5 text-[10px] font-bold uppercase text-emerald-600 hover:bg-emerald-100'
           >
             <Plus size={13} /> New community
           </button>
@@ -1880,7 +1898,7 @@ export default function Community({
                   setNewCategory(cat)
                   if (cat && !newName.trim()) setNewName(categoryLabel(cat))
                 }}
-                className='h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-[12px] font-black outline-none'
+                className='h-10 w-full rounded-xl border border-slate-200 bg-white px-2 text-[12px] font-bold outline-none'
               >
                 <option value=''>No class/track (everyone)</option>
                 {COURSE_CATEGORIES.map((c) => (
@@ -1899,7 +1917,7 @@ export default function Community({
               <button
                 onClick={createChannel}
                 disabled={!newName.trim()}
-                className='h-10 w-full rounded-xl bg-[#002EFF] text-[10px] font-black uppercase text-white hover:bg-blue-700 disabled:opacity-50'
+                className='h-10 w-full rounded-xl bg-[#002EFF] text-[10px] font-bold uppercase text-white hover:bg-blue-700 disabled:opacity-50'
               >
                 Create
               </button>
@@ -1913,7 +1931,7 @@ export default function Community({
   const membersPanel = (
     <div className='flex h-full flex-col'>
       <div className='flex items-center justify-between border-b border-slate-100 px-4 py-3'>
-        <p className='flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest text-slate-500'>
+        <p className='flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500'>
           <Users size={13} /> Members · {members.length}
         </p>
         <button
@@ -1926,7 +1944,7 @@ export default function Community({
       </div>
       {members.length > 6 && (
         <div className='relative px-3 pt-3'>
-          <Search size={13} className='absolute left-6 top-1/2 mt-1.5 -translate-y-1/2 text-zinc-400' />
+          <Search size={13} className='absolute left-6 top-1/2 mt-1.5 -translate-y-1/2 text-slate-400' />
           <input
             value={memberSearch}
             onChange={(e) => setMemberSearch(e.target.value)}
@@ -1954,13 +1972,13 @@ export default function Community({
             ].filter((g) => g.rows.length)
             if (!groups.length)
               return (
-                <p className='py-6 text-center text-[11px] font-bold text-zinc-400'>
+                <p className='py-6 text-center text-[11px] font-bold text-slate-400'>
                   Nobody by that name.
                 </p>
               )
             return groups.map((g) => (
               <div key={g.label}>
-                <p className='px-2 pb-1 text-[9px] font-black uppercase tracking-widest text-zinc-300'>
+                <p className='px-2 pb-1 text-[10px] font-bold uppercase tracking-wide text-slate-300'>
                   {g.label} · {g.rows.length}
                 </p>
                 {g.rows.map((mem) => (
@@ -1968,7 +1986,7 @@ export default function Community({
                     key={mem.id}
                     className='flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-slate-50'
                   >
-                    <span className='relative grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-zinc-100 text-[10px] font-black text-zinc-600'>
+                    <span className='relative grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-slate-100 text-[10px] font-bold text-slate-600'>
                       {mem.name.slice(0, 2).toUpperCase()}
                       {onlineIds.has(String(mem.id)) && (
                         <span
@@ -1977,11 +1995,11 @@ export default function Community({
                         />
                       )}
                     </span>
-                    <span className='min-w-0 flex-1 truncate text-[11px] font-bold text-zinc-700'>
+                    <span className='min-w-0 flex-1 truncate text-[11px] font-bold text-slate-700'>
                       {mem.name}
-                      {mem.id === myId && <span className='ml-1 text-zinc-400'>(you)</span>}
+                      {mem.id === myId && <span className='ml-1 text-slate-400'>(you)</span>}
                     </span>
-                    <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${roleTint(mem.role)}`}>
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${roleTint(mem.role)}`}>
                       {roleLabel(mem.role)}
                     </span>
                     {canManageMembers && mem.role.toLowerCase() === 'student' && (
@@ -2026,14 +2044,14 @@ export default function Community({
       >
         <div className='flex items-start justify-between gap-2 px-4 pt-4 pb-2'>
           <div className='min-w-0'>
-            <h2 className='text-[15px] font-black tracking-tight text-slate-900'>
+            <h2 className='text-[15px] font-bold tracking-tight text-slate-900'>
               Scholars Chat Pods
             </h2>
             <p className='text-[10px] font-medium text-slate-400'>
               Telegram/WhatsApp style discussions
             </p>
           </div>
-          <span className='mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-600'>
+          <span className='mt-0.5 inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-600'>
             <span className='h-1.5 w-1.5 rounded-full bg-emerald-500' /> Live
           </span>
         </div>
@@ -2079,10 +2097,10 @@ export default function Community({
                   </span>
                   <span className='min-w-0 flex-1'>
                     <span className='flex items-center gap-2'>
-                      <span className='min-w-0 flex-1 truncate text-[12px] font-black text-slate-800'>
+                      <span className='min-w-0 flex-1 truncate text-[12px] font-bold text-slate-800'>
                         {c.name}
                       </span>
-                      <span className='shrink-0 text-[9px] font-medium text-slate-400'>
+                      <span className='shrink-0 text-[10px] font-medium text-slate-400'>
                         {rowTime(c.lastMessageAt)}
                       </span>
                     </span>
@@ -2093,7 +2111,7 @@ export default function Community({
                           : 'No messages yet'}
                       </span>
                       {!on && !!c.unread && (
-                        <span className='min-w-[18px] shrink-0 rounded-full bg-[#002EFF] px-1.5 py-0.5 text-center text-[9px] font-black tabular-nums text-white'>
+                        <span className='min-w-[18px] shrink-0 rounded-full bg-[#002EFF] px-1.5 py-0.5 text-center text-[10px] font-bold tabular-nums text-white'>
                           {c.unread > 99 ? '99+' : c.unread}
                         </span>
                       )}
@@ -2113,7 +2131,7 @@ export default function Community({
                 setNewOpen(true)
                 setManageOpen(true)
               }}
-              className='flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#002EFF] py-2.5 text-[10px] font-black uppercase text-white hover:bg-blue-700'
+              className='flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#002EFF] py-2.5 text-[10px] font-bold uppercase text-white hover:bg-blue-700'
             >
               <Plus size={13} /> New room
             </button>
@@ -2140,7 +2158,7 @@ export default function Community({
             {podIcon(active)}
           </span>
           <div className='min-w-0 flex-1'>
-            <h2 className='truncate text-[13px] font-black text-slate-900 sm:text-[14px]'>
+            <h2 className='truncate text-[13px] font-bold text-slate-900 sm:text-[14px]'>
               {active.name}
             </h2>
             <p className='truncate text-[10px] font-medium text-slate-400'>
@@ -2297,15 +2315,15 @@ export default function Community({
               {bellOpen && (
                 <div className='max-h-[70vh] overflow-y-auto p-3 custom-scrollbar'>
                   <div className='mb-2 flex items-center justify-between'>
-                    <p className='text-[10px] font-black uppercase tracking-widest text-slate-400'>
+                    <p className='text-[10px] font-bold uppercase tracking-wide text-slate-400'>
                       Since you were last here
                     </p>
-                    <button onClick={() => setBellOpen(false)} className='text-zinc-400 hover:text-zinc-600' aria-label='Close alerts'>
+                    <button onClick={() => setBellOpen(false)} className='text-slate-400 hover:text-slate-600' aria-label='Close alerts'>
                       <X size={14} />
                     </button>
                   </div>
                   {channels.filter((c) => (c.unread || 0) > 0).length === 0 ? (
-                    <p className='py-4 text-center text-[11px] font-bold text-zinc-400'>
+                    <p className='py-4 text-center text-[11px] font-bold text-slate-400'>
                       You are all caught up.
                     </p>
                   ) : (
@@ -2313,7 +2331,7 @@ export default function Community({
                       {channels
                         .filter((c) => (c.unread || 0) > 0)
                         .map((c) => (
-                          <div key={c.id} className='flex items-center gap-2 rounded-xl bg-zinc-50 px-3 py-2'>
+                          <div key={c.id} className='flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2'>
                             <button
                               onClick={() => {
                                 openChannel(c.id)
@@ -2321,22 +2339,22 @@ export default function Community({
                               }}
                               className='min-w-0 flex-1 text-left'
                             >
-                              <span className='flex items-center gap-1.5 text-[11px] font-black text-zinc-700'>
+                              <span className='flex items-center gap-1.5 text-[11px] font-bold text-slate-700'>
                                 {c.name}
                                 {!!c.mentions && (
-                                  <span className='rounded-full bg-amber-100 px-1.5 py-0.5 text-[8px] font-black uppercase text-amber-700'>
+                                  <span className='rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700'>
                                     {c.mentions} mention{c.mentions === 1 ? '' : 's'}
                                   </span>
                                 )}
-                                {c.muted && <BellOff size={10} className='text-zinc-400' />}
+                                {c.muted && <BellOff size={10} className='text-slate-400' />}
                               </span>
-                              <span className='mt-0.5 block truncate text-[10px] font-medium text-zinc-400'>
+                              <span className='mt-0.5 block truncate text-[10px] font-medium text-slate-400'>
                                 {c.unread} new
                                 {c.lastMessageSender ? ` · ${c.lastMessageSender}: ${c.lastMessageText ?? ''}` : ''}
                               </span>
                             </button>
                             {c.muted ? (
-                              <button onClick={() => setMute(c.id, 0)} className='shrink-0 rounded-lg bg-white px-2 py-1 text-[9px] font-black uppercase text-[#002EFF] hover:bg-blue-50'>
+                              <button onClick={() => setMute(c.id, 0)} className='shrink-0 rounded-lg bg-white px-2 py-1 text-[10px] font-bold uppercase text-[#002EFF] hover:bg-blue-50'>
                                 Unmute
                               </button>
                             ) : (
@@ -2350,7 +2368,7 @@ export default function Community({
                                     key={opt.label}
                                     onClick={() => setMute(c.id, opt.minutes)}
                                     title={opt.minutes ? `Mute for ${opt.label}` : 'Mute until you turn it back on'}
-                                    className='rounded-lg bg-white px-2 py-1 text-[9px] font-black uppercase text-zinc-400 hover:text-[#002EFF]'
+                                    className='rounded-lg bg-white px-2 py-1 text-[10px] font-bold uppercase text-slate-400 hover:text-[#002EFF]'
                                   >
                                     {opt.label}
                                   </button>
@@ -2361,7 +2379,7 @@ export default function Community({
                         ))}
                     </div>
                   )}
-                  <p className='pt-2 text-[9px] font-bold text-zinc-400'>
+                  <p className='pt-2 text-[10px] font-bold text-slate-400'>
                     Muting keeps a channel quiet — it does not mark anything as read.
                   </p>
                 </div>
@@ -2370,7 +2388,7 @@ export default function Community({
                 <div className='space-y-2 p-3'>
                   <div className='flex items-center gap-2'>
                     <div className='relative flex-1'>
-                      <Search size={13} className='absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400' />
+                      <Search size={13} className='absolute left-3 top-1/2 -translate-y-1/2 text-slate-400' />
                       <input
                         autoFocus
                         value={searchTerm}
@@ -2380,17 +2398,17 @@ export default function Community({
                           if (e.key === 'Escape') closeSearch()
                         }}
                         placeholder='Search messages, files…'
-                        className='h-9 w-full rounded-xl bg-zinc-50 pl-8 pr-3 text-[13px] font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#002EFF]/30'
+                        className='h-9 w-full rounded-xl bg-slate-50 pl-8 pr-3 text-[13px] font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#002EFF]/30'
                       />
                     </div>
                     <button
                       onClick={runSearch}
                       disabled={searchTerm.trim().length < 2 || searching}
-                      className='h-9 rounded-xl bg-[#002EFF] px-3 text-[10px] font-black uppercase text-white disabled:opacity-40'
+                      className='h-9 rounded-xl bg-[#002EFF] px-3 text-[10px] font-bold uppercase text-white disabled:opacity-40'
                     >
                       {searching ? <Loader2 size={13} className='animate-spin' /> : 'Find'}
                     </button>
-                    <button onClick={closeSearch} className='grid h-9 w-9 place-items-center rounded-xl text-zinc-400 hover:bg-zinc-100' aria-label='Close search'>
+                    <button onClick={closeSearch} className='grid h-9 w-9 place-items-center rounded-xl text-slate-400 hover:bg-slate-100' aria-label='Close search'>
                       <X size={14} />
                     </button>
                   </div>
@@ -2399,8 +2417,8 @@ export default function Community({
                       <button
                         key={s}
                         onClick={() => setSearchScope(s)}
-                        className={`h-7 rounded-lg px-2.5 text-[10px] font-black uppercase ${
-                          searchScope === s ? 'bg-blue-50 text-[#002EFF]' : 'text-zinc-400 hover:text-zinc-600'
+                        className={`h-7 rounded-lg px-2.5 text-[10px] font-bold uppercase ${
+                          searchScope === s ? 'bg-blue-50 text-[#002EFF]' : 'text-slate-400 hover:text-slate-600'
                         }`}
                       >
                         {s === 'all' ? 'Messages' : s}
@@ -2410,7 +2428,7 @@ export default function Community({
                   {searchHits && (
                     <div className='max-h-72 space-y-1.5 overflow-y-auto custom-scrollbar'>
                       {searchHits.length === 0 ? (
-                        <p className='py-4 text-center text-[11px] font-bold text-zinc-400'>
+                        <p className='py-4 text-center text-[11px] font-bold text-slate-400'>
                           Nothing matched “{searchTerm.trim()}”.
                         </p>
                       ) : (
@@ -2424,15 +2442,15 @@ export default function Community({
                                 openChannel(where)
                                 closeSearch()
                               }}
-                              className='w-full rounded-xl bg-zinc-50 px-3 py-2 text-left hover:bg-blue-50/60'
+                              className='w-full rounded-xl bg-slate-50 px-3 py-2 text-left hover:bg-blue-50/60'
                             >
-                              <span className='flex items-center gap-1.5 text-[10px] font-black text-[#002EFF]'>
+                              <span className='flex items-center gap-1.5 text-[10px] font-bold text-[#002EFF]'>
                                 {channelName}
-                                <span className='font-bold text-zinc-400'>
+                                <span className='font-bold text-slate-400'>
                                   · {h.senderName} · {new Date(h.createdAt).toLocaleDateString()}
                                 </span>
                               </span>
-                              <span className='mt-0.5 block text-[12px] font-medium text-zinc-700 line-clamp-2'>
+                              <span className='mt-0.5 block text-[12px] font-medium text-slate-700 line-clamp-2'>
                                 {previewText(h)}
                               </span>
                             </button>
@@ -2463,8 +2481,8 @@ export default function Community({
                 <div className='mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm'>
                   <Send size={20} className='text-[#002EFF]' />
                 </div>
-                <p className='text-sm font-bold text-zinc-700'>No messages yet</p>
-                <p className='mt-1 text-[11px] font-medium text-zinc-400'>
+                <p className='text-sm font-bold text-slate-700'>No messages yet</p>
+                <p className='mt-1 text-[11px] font-medium text-slate-400'>
                   {canCompose ? 'Be the first to say hello 👋' : 'Messages from tutors and students will show here.'}
                 </p>
               </div>
@@ -2475,7 +2493,7 @@ export default function Community({
                   <button
                     onClick={loadOlder}
                     disabled={loadingOlder}
-                    className='inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-[10px] font-black uppercase tracking-wide text-[#002EFF] shadow-sm ring-1 ring-zinc-200 hover:bg-blue-50 disabled:opacity-60'
+                    className='inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-[10px] font-bold uppercase tracking-wide text-[#002EFF] shadow-sm ring-1 ring-slate-200 hover:bg-blue-50 disabled:opacity-60'
                   >
                     {loadingOlder ? <Loader2 size={12} className='animate-spin' /> : <ChevronUp size={12} />}
                     Load earlier messages
@@ -2502,7 +2520,7 @@ export default function Community({
                     <Fragment key={m.id}>
                       {newDay && (
                         <div className='flex items-center justify-center py-1'>
-                          <span className='rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-wide text-zinc-500 shadow-sm'>
+                          <span className='rounded-full bg-white px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500 shadow-sm'>
                             {dayLabel(m.createdAt)}
                           </span>
                         </div>
@@ -2510,7 +2528,7 @@ export default function Community({
                       {firstUnread && (
                         <div className='flex items-center gap-2 py-0.5'>
                           <span className='h-px flex-1 bg-[#002EFF]/30' />
-                          <span className='text-[9px] font-black uppercase tracking-widest text-[#002EFF]'>New messages</span>
+                          <span className='text-[10px] font-bold uppercase tracking-wide text-[#002EFF]'>New messages</span>
                           <span className='h-px flex-1 bg-[#002EFF]/30' />
                         </div>
                       )}
@@ -2540,7 +2558,7 @@ export default function Community({
           {!atBottom && messages.length > 0 && (
             <button
               onClick={jumpToLatest}
-              className='absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#002EFF] px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-white shadow-lg hover:bg-blue-700'
+              className='absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-[#002EFF] px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-lg hover:bg-blue-700'
             >
               <ChevronDown size={13} /> Latest
             </button>
@@ -2567,8 +2585,8 @@ export default function Community({
         {/* Composer */}
         {postingBlocked ? (
           <div className='border-t border-slate-100 p-3'>
-            <div className='flex items-center gap-2 rounded-2xl bg-zinc-50 px-4 py-3 text-[11px] font-bold text-zinc-500'>
-              <Lock size={14} className='shrink-0 text-zinc-400' />
+            <div className='flex items-center gap-2 rounded-2xl bg-slate-50 px-4 py-3 text-[11px] font-bold text-slate-500'>
+              <Lock size={14} className='shrink-0 text-slate-400' />
               The community is locked. Only tutors can post right now.
             </div>
           </div>
@@ -2578,12 +2596,12 @@ export default function Community({
               <div className='mb-2 flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2'>
                 <span className='w-0.5 self-stretch rounded-full bg-[#002EFF]' />
                 <div className='min-w-0 flex-1'>
-                  <p className='text-[10px] font-black uppercase tracking-wide text-[#002EFF]'>
+                  <p className='text-[10px] font-bold uppercase tracking-wide text-[#002EFF]'>
                     Replying to {replyTarget.own ? 'yourself' : replyTarget.senderName}
                   </p>
-                  <p className='truncate text-[11px] font-medium text-zinc-500'>{previewText(replyTarget)}</p>
+                  <p className='truncate text-[11px] font-medium text-slate-500'>{previewText(replyTarget)}</p>
                 </div>
-                <button onClick={() => setReplyTarget(null)} className='shrink-0 rounded-lg p-1 text-zinc-400 hover:bg-white hover:text-zinc-700' aria-label='Cancel reply'>
+                <button onClick={() => setReplyTarget(null)} className='shrink-0 rounded-lg p-1 text-slate-400 hover:bg-white hover:text-slate-700' aria-label='Cancel reply'>
                   <X size={13} />
                 </button>
               </div>
@@ -2592,7 +2610,7 @@ export default function Community({
             {/* Subject symbols — the ΔH / ∫ row from the design, one tap to insert */}
             {!recording && (
               <div className='mb-2 flex items-center gap-1 overflow-x-auto pb-0.5 custom-scrollbar'>
-                <span className='shrink-0 pr-1 text-[8px] font-black uppercase tracking-widest text-slate-400'>
+                <span className='shrink-0 pr-1 text-[10px] font-bold uppercase tracking-wide text-slate-400'>
                   Insert
                 </span>
                 {SYMBOLS.map((s) => (
@@ -2613,11 +2631,11 @@ export default function Community({
             {recording ? (
               <div className='flex items-center gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3'>
                 <span className='h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500' />
-                <span className='text-xs font-black tabular-nums text-rose-600'>
+                <span className='text-xs font-bold tabular-nums text-rose-600'>
                   Recording {duration(recSecs) || '0:00'}
                 </span>
                 <div className='ml-auto flex items-center gap-2'>
-                  <button onClick={cancelRecording} className='rounded-lg px-3 py-1.5 text-[11px] font-bold text-zinc-500 hover:bg-white'>
+                  <button onClick={cancelRecording} className='rounded-lg px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:bg-white'>
                     Cancel
                   </button>
                   <button onClick={stopRecording} className='flex items-center gap-1.5 rounded-lg bg-[#002EFF] px-3 py-1.5 text-[11px] font-bold text-white'>
@@ -2628,7 +2646,7 @@ export default function Community({
             ) : (
               <div className='relative flex items-end gap-2'>
                 {mentionQuery !== null && mentionOptions.length > 0 && (
-                  <div className='absolute bottom-14 left-0 z-30 w-64 rounded-2xl border border-zinc-200 bg-white p-1 shadow-xl'>
+                  <div className='absolute bottom-14 left-0 z-30 w-64 rounded-2xl border border-slate-200 bg-white p-1 shadow-xl'>
                     {mentionOptions.map((o) => (
                       <button
                         key={o.id}
@@ -2638,11 +2656,11 @@ export default function Community({
                         }}
                         className='flex w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left hover:bg-blue-50'
                       >
-                        <span className='grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-zinc-100 text-[9px] font-black text-zinc-600'>
+                        <span className='grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-slate-100 text-[10px] font-bold text-slate-600'>
                           {o.id === '@everyone' ? '@' : o.name.slice(0, 2).toUpperCase()}
                         </span>
-                        <span className='min-w-0 flex-1 truncate text-[12px] font-bold text-zinc-700'>{o.name}</span>
-                        <span className={`rounded px-1.5 py-0.5 text-[8px] font-black uppercase ${o.id === '@everyone' ? 'bg-amber-50 text-amber-600' : roleTint(o.role)}`}>
+                        <span className='min-w-0 flex-1 truncate text-[12px] font-bold text-slate-700'>{o.name}</span>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${o.id === '@everyone' ? 'bg-amber-50 text-amber-600' : roleTint(o.role)}`}>
                           {o.id === '@everyone' ? 'All' : roleLabel(o.role)}
                         </span>
                       </button>
@@ -2651,12 +2669,12 @@ export default function Community({
                 )}
 
                 {pollOpen && (
-                  <div className='absolute bottom-14 left-0 right-0 z-20 space-y-2 rounded-2xl border border-zinc-200 bg-white p-3 shadow-xl'>
+                  <div className='absolute bottom-14 left-0 right-0 z-20 space-y-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl'>
                     <div className='flex items-center justify-between'>
-                      <p className='flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wide text-zinc-500'>
+                      <p className='flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500'>
                         <BarChart3 size={13} className='text-[#002EFF]' /> New poll
                       </p>
-                      <button onClick={() => setPollOpen(false)} className='text-zinc-400 hover:text-rose-500' aria-label='Close poll composer'>
+                      <button onClick={() => setPollOpen(false)} className='text-slate-400 hover:text-rose-500' aria-label='Close poll composer'>
                         <X size={15} />
                       </button>
                     </div>
@@ -2664,7 +2682,7 @@ export default function Community({
                       value={pollQuestion}
                       onChange={(e) => setPollQuestion(e.target.value)}
                       placeholder='Ask a question…'
-                      className='h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] font-bold outline-none focus:border-[#002EFF]/40'
+                      className='h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-[13px] font-bold outline-none focus:border-[#002EFF]/40'
                     />
                     <div className='space-y-1.5'>
                       {pollOptions.map((o, i) => (
@@ -2676,29 +2694,29 @@ export default function Community({
                             value={o}
                             onChange={(e) => setPollOptions((prev) => prev.map((p, idx) => (idx === i ? e.target.value : p)))}
                             placeholder={`Option ${i + 1}`}
-                            className='h-9 flex-1 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-[12px] font-medium outline-none focus:border-[#002EFF]/40'
+                            className='h-9 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[12px] font-medium outline-none focus:border-[#002EFF]/40'
                           />
                           {pollOptions.length > 2 && (
-                            <button onClick={() => setPollOptions((prev) => prev.filter((_, idx) => idx !== i))} className='shrink-0 text-zinc-300 hover:text-rose-500' aria-label={`Remove option ${i + 1}`}>
+                            <button onClick={() => setPollOptions((prev) => prev.filter((_, idx) => idx !== i))} className='shrink-0 text-slate-300 hover:text-rose-500' aria-label={`Remove option ${i + 1}`}>
                               <X size={14} />
                             </button>
                           )}
                         </div>
                       ))}
                       {pollOptions.length < 10 && (
-                        <button onClick={() => setPollOptions((prev) => [...prev, ''])} className='inline-flex items-center gap-1 text-[10px] font-black uppercase text-[#002EFF] hover:underline'>
+                        <button onClick={() => setPollOptions((prev) => [...prev, ''])} className='inline-flex items-center gap-1 text-[10px] font-bold uppercase text-[#002EFF] hover:underline'>
                           <Plus size={11} /> Add option
                         </button>
                       )}
                     </div>
                     <label className='flex cursor-pointer items-center gap-2'>
                       <input type='checkbox' checked={pollIsQuiz} onChange={(e) => setPollIsQuiz(e.target.checked)} className='h-4 w-4 accent-[#002EFF]' />
-                      <span className='text-[11px] font-bold text-zinc-600'>Mark as a quiz (reveals the answer after voting)</span>
+                      <span className='text-[11px] font-bold text-slate-600'>Mark as a quiz (reveals the answer after voting)</span>
                     </label>
                     <button
                       onClick={sendPoll}
                       disabled={sending}
-                      className='flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#002EFF] text-[11px] font-black uppercase tracking-wide text-white transition-all hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50'
+                      className='flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#002EFF] text-[11px] font-bold uppercase tracking-wide text-white transition-all hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50'
                     >
                       {sending ? <Loader2 size={14} className='animate-spin' /> : <Send size={14} />}
                       Post poll
@@ -2711,13 +2729,13 @@ export default function Community({
                     type='button'
                     onClick={() => setAttachOpen((o) => !o)}
                     disabled={busy}
-                    className='flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-zinc-200 bg-white text-zinc-500 transition-colors hover:border-blue-200 hover:text-[#002EFF] disabled:opacity-50'
+                    className='flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition-colors hover:border-blue-200 hover:text-[#002EFF] disabled:opacity-50'
                     aria-label='Attach'
                   >
                     {uploading ? <Loader2 size={18} className='animate-spin' /> : <Plus size={18} />}
                   </button>
                   {attachOpen && (
-                    <div className='absolute bottom-14 left-0 z-10 w-44 rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-xl'>
+                    <div className='absolute bottom-14 left-0 z-10 w-44 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl'>
                       <AttachItem icon={ImageIcon} label='Photo' onClick={() => imageInput.current?.click()} />
                       <AttachItem icon={VideoIcon} label='Video' onClick={() => videoInput.current?.click()} />
                       <AttachItem icon={FileText} label='Document' onClick={() => docInput.current?.click()} />
@@ -2769,7 +2787,7 @@ export default function Community({
                     }
                   }}
                   placeholder='Type a message…'
-                  className='max-h-32 flex-1 resize-none rounded-2xl border border-zinc-200 bg-slate-50 px-4 py-3 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-[#002EFF] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#002EFF]/10'
+                  className='max-h-32 flex-1 resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#002EFF] focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#002EFF]/10'
                 />
 
                 {canRecord && !text.trim() ? (
@@ -2853,7 +2871,7 @@ function HeaderButton({
     >
       {children}
       {!!badge && (
-        <span className='absolute -right-0.5 -top-0.5 min-w-[15px] rounded-full bg-rose-500 px-1 text-[8px] font-black tabular-nums text-white'>
+        <span className='absolute -right-0.5 -top-0.5 min-w-[15px] rounded-full bg-rose-500 px-1 text-[10px] font-bold tabular-nums text-white'>
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -2876,8 +2894,8 @@ function ActionChip({
   return (
     <button
       onClick={onClick}
-      className={`inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-[11px] font-black shadow-sm ring-1 ring-zinc-200 active:scale-95 ${
-        tone === 'rose' ? 'text-rose-600' : 'text-zinc-700'
+      className={`inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-[11px] font-bold shadow-sm ring-1 ring-slate-200 active:scale-95 ${
+        tone === 'rose' ? 'text-rose-600' : 'text-slate-700'
       }`}
     >
       <Icon size={14} /> {label}
@@ -2898,7 +2916,7 @@ function AttachItem({
     <button
       type='button'
       onClick={onClick}
-      className='w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-[13px] font-semibold text-zinc-700 hover:bg-blue-50 hover:text-[#002EFF] transition-colors'
+      className='w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left text-[13px] font-semibold text-slate-700 hover:bg-blue-50 hover:text-[#002EFF] transition-colors'
     >
       <Icon size={16} />
       {label}
@@ -2981,7 +2999,7 @@ function MessageBubble({
       {m.own ? null : grouped ? (
         <div className='h-8 w-8 shrink-0' aria-hidden />
       ) : (
-        <div className='grid h-8 w-8 shrink-0 place-items-center self-end rounded-xl bg-white text-[10px] font-black text-zinc-600 shadow-sm ring-1 ring-zinc-200'>
+        <div className='grid h-8 w-8 shrink-0 place-items-center self-end rounded-xl bg-white text-[10px] font-bold text-slate-600 shadow-sm ring-1 ring-slate-200'>
           {initials || '?'}
         </div>
       )}
@@ -2991,12 +3009,12 @@ function MessageBubble({
         <div className={`mb-0.5 flex items-center gap-2 px-1 ${m.own ? 'flex-row-reverse' : ''}`}>
           {!grouped && (
             <>
-              <span className={`text-[11px] font-black ${m.own ? 'text-[#002EFF]' : 'text-zinc-800'}`}>
+              <span className={`text-[11px] font-bold ${m.own ? 'text-[#002EFF]' : 'text-slate-800'}`}>
                 {m.own ? `${m.senderName} (You)` : m.senderName}
               </span>
               {!m.own && (
                 <span
-                  className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${roleTint(
+                  className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${roleTint(
                     m.senderRole,
                   )}`}
                 >
@@ -3005,7 +3023,7 @@ function MessageBubble({
               )}
             </>
           )}
-          <span className='font-mono text-[9px] font-medium text-zinc-400'>
+          <span className='font-mono text-[10px] font-medium text-slate-400'>
             {clock(m.createdAt)}
           </span>
           {m.pinned && (
@@ -3015,7 +3033,7 @@ function MessageBubble({
             <span className='relative'>
               <button
                 onClick={() => setPickerOpen((v) => !v)}
-                className={`transition-opacity text-zinc-300 hover:text-[#002EFF] ${
+                className={`transition-opacity text-slate-300 hover:text-[#002EFF] ${
                   pickerOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                 }`}
                 aria-label='React to message'
@@ -3032,7 +3050,7 @@ function MessageBubble({
                     tabIndex={-1}
                   />
                   <span
-                    className={`absolute z-20 top-5 flex items-center gap-0.5 rounded-2xl border border-zinc-200 bg-white p-1 shadow-lg ${
+                    className={`absolute z-20 top-5 flex items-center gap-0.5 rounded-2xl border border-slate-200 bg-white p-1 shadow-lg ${
                       m.own ? 'right-0' : 'left-0'
                     }`}
                   >
@@ -3043,7 +3061,7 @@ function MessageBubble({
                           setPickerOpen(false)
                           onReact(e)
                         }}
-                        className='h-8 w-8 rounded-xl text-base leading-none hover:bg-zinc-100 active:scale-90 transition-transform'
+                        className='h-8 w-8 rounded-xl text-base leading-none hover:bg-slate-100 active:scale-90 transition-transform'
                         aria-label={`React ${e}`}
                       >
                         {e}
@@ -3056,7 +3074,7 @@ function MessageBubble({
             {canReply && (
               <button
                 onClick={onReply}
-                className='opacity-0 group-hover:opacity-100 transition-opacity text-zinc-300 hover:text-[#002EFF]'
+                className='opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-[#002EFF]'
                 aria-label='Reply to message'
               >
                 <Reply size={12} />
@@ -3065,7 +3083,7 @@ function MessageBubble({
             {canPin && (
               <button
                 onClick={onPin}
-                className='opacity-0 group-hover:opacity-100 transition-opacity text-zinc-300 hover:text-[#002EFF]'
+                className='opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-[#002EFF]'
                 title={m.pinned ? 'Unpin' : 'Pin'}
               >
                 <Pin size={12} />
@@ -3077,7 +3095,7 @@ function MessageBubble({
                   setDraft(m.text ?? '')
                   setEditing(true)
                 }}
-                className='opacity-0 group-hover:opacity-100 transition-opacity text-zinc-300 hover:text-[#002EFF]'
+                className='opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-[#002EFF]'
                 title='Edit'
               >
                 <Pencil size={12} />
@@ -3086,7 +3104,7 @@ function MessageBubble({
             {showDelete && (
               <button
                 onClick={onDelete}
-                className='opacity-0 group-hover:opacity-100 transition-opacity text-zinc-300 hover:text-rose-500'
+                className='opacity-0 group-hover:opacity-100 transition-opacity text-slate-300 hover:text-rose-500'
                 aria-label='Delete message'
               >
                 <Trash2 size={12} />
@@ -3107,10 +3125,10 @@ function MessageBubble({
             m.type === 'text'
               ? m.own
                 ? 'bg-[#0B2E8A] px-4 py-2.5 text-white shadow-sm'
-                : 'bg-white px-4 py-2.5 text-zinc-800 shadow-sm ring-1 ring-zinc-200/70'
+                : 'bg-white px-4 py-2.5 text-slate-800 shadow-sm ring-1 ring-slate-200/70'
               : m.type === 'poll'
-                ? 'min-w-[250px] bg-white p-3 shadow-sm ring-1 ring-zinc-200/70'
-                : 'bg-white p-1.5 shadow-sm ring-1 ring-zinc-200/70'
+                ? 'min-w-[250px] bg-white p-3 shadow-sm ring-1 ring-slate-200/70'
+                : 'bg-white p-1.5 shadow-sm ring-1 ring-slate-200/70'
           }`}
         >
           {/* Quoted message — what this one is answering */}
@@ -3119,7 +3137,7 @@ function MessageBubble({
               className={`mb-2 flex gap-2 rounded-xl px-2.5 py-1.5 ${
                 m.type === 'text' && m.own
                   ? 'bg-white/15'
-                  : 'bg-zinc-50 border border-zinc-100'
+                  : 'bg-slate-50 border border-slate-100'
               }`}
             >
               <span
@@ -3129,7 +3147,7 @@ function MessageBubble({
               />
               <span className='block min-w-0 flex-1'>
                 <span
-                  className={`block text-[10px] font-black ${
+                  className={`block text-[10px] font-bold ${
                     m.type === 'text' && m.own ? 'text-white/80' : 'text-[#002EFF]'
                   }`}
                 >
@@ -3137,7 +3155,7 @@ function MessageBubble({
                 </span>
                 <span
                   className={`block text-[11px] font-medium truncate ${
-                    m.type === 'text' && m.own ? 'text-white/70' : 'text-zinc-500'
+                    m.type === 'text' && m.own ? 'text-white/70' : 'text-slate-500'
                   }`}
                 >
                   {previewText(m.replyTo)}
@@ -3154,12 +3172,12 @@ function MessageBubble({
                   className='text-[#002EFF] mt-0.5 shrink-0'
                   aria-hidden
                 />
-                <p className='text-[13px] font-black text-zinc-800 leading-snug break-words'>
+                <p className='text-[13px] font-bold text-slate-800 leading-snug break-words'>
                   {m.poll.question}
                 </p>
               </div>
               {m.poll.isQuiz && (
-                <span className='inline-block text-[8px] font-black uppercase tracking-wide bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded'>
+                <span className='inline-block text-[10px] font-bold uppercase tracking-wide bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded'>
                   Quiz
                 </span>
               )}
@@ -3183,7 +3201,7 @@ function MessageBubble({
                             ? 'border-rose-300 bg-rose-50 text-rose-700'
                             : o.voted
                               ? 'border-[#002EFF] bg-blue-50 text-[#002EFF]'
-                              : 'border-zinc-200 bg-white text-zinc-700 hover:border-[#002EFF]/40'
+                              : 'border-slate-200 bg-white text-slate-700 hover:border-[#002EFF]/40'
                       }`}
                     >
                       {answered && (
@@ -3203,7 +3221,7 @@ function MessageBubble({
                   )
                 })}
               </div>
-              <p className='text-[10px] font-bold text-zinc-400 tabular-nums'>
+              <p className='text-[10px] font-bold text-slate-400 tabular-nums'>
                 {m.poll.totalVotes} vote{m.poll.totalVotes === 1 ? '' : 's'}
                 {m.poll.closed ? ' · closed' : ''}
               </p>
@@ -3225,7 +3243,7 @@ function MessageBubble({
                   }}
                   autoFocus
                   rows={2}
-                  className='w-full resize-none rounded-lg bg-white/90 text-zinc-800 text-[13px] p-2 outline-none'
+                  className='w-full resize-none rounded-lg bg-white/90 text-slate-800 text-[13px] p-2 outline-none'
                 />
                 <div className='flex items-center gap-2 mt-1 justify-end'>
                   <button
@@ -3236,7 +3254,7 @@ function MessageBubble({
                   </button>
                   <button
                     onClick={saveEdit}
-                    className='flex items-center gap-1 text-[11px] font-black text-white'
+                    className='flex items-center gap-1 text-[11px] font-bold text-white'
                   >
                     <Check size={12} /> Save
                   </button>
@@ -3270,7 +3288,7 @@ function MessageBubble({
             <div className='flex items-center gap-2 px-2 py-1 min-w-[220px]'>
               <audio src={m.fileUrl} controls className='w-full h-9' />
               {m.durationSec ? (
-                <span className='text-[10px] font-bold text-zinc-400 tabular-nums'>
+                <span className='text-[10px] font-bold text-slate-400 tabular-nums'>
                   {duration(m.durationSec)}
                 </span>
               ) : null}
@@ -3288,14 +3306,14 @@ function MessageBubble({
                 <FileText size={16} className='text-[#002EFF]' />
               </div>
               <div className='min-w-0 flex-1'>
-                <p className='text-[12px] font-bold text-zinc-800 truncate'>
+                <p className='text-[12px] font-bold text-slate-800 truncate'>
                   {m.fileName || 'Document'}
                 </p>
-                <p className='text-[10px] font-medium text-zinc-400'>
+                <p className='text-[10px] font-medium text-slate-400'>
                   {humanSize(m.fileSize) || 'Open'}
                 </p>
               </div>
-              <Download size={15} className='text-zinc-400 shrink-0' />
+              <Download size={15} className='text-slate-400 shrink-0' />
             </a>
           )}
         </div>
@@ -3307,7 +3325,7 @@ function MessageBubble({
               m.own ? 'items-end' : 'items-start'
             }`}
           >
-            <div className='flex gap-0.5 rounded-2xl bg-white p-1 shadow-md ring-1 ring-zinc-200'>
+            <div className='flex gap-0.5 rounded-2xl bg-white p-1 shadow-md ring-1 ring-slate-200'>
               {REACTIONS.map((e) => (
                 <button
                   key={e}
@@ -3359,10 +3377,10 @@ function MessageBubble({
               <button
                 key={r.emoji}
                 onClick={() => onReact(r.emoji)}
-                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-black tabular-nums transition-colors active:scale-95 ${
+                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold tabular-nums transition-colors active:scale-95 ${
                   r.mine
                     ? 'border-[#002EFF] bg-blue-50 text-[#002EFF]'
-                    : 'border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300'
+                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
                 }`}
                 aria-label={`${r.emoji} ${r.count}`}
                 aria-pressed={r.mine}
@@ -3379,8 +3397,8 @@ function MessageBubble({
           <div className='mt-0.5 px-1'>
             <button
               onClick={toggleSeen}
-              className={`inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wide transition-colors hover:text-[#002EFF] ${
-                m.readCount > 0 ? 'text-[#002EFF]' : 'text-zinc-400'
+              className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide transition-colors hover:text-[#002EFF] ${
+                m.readCount > 0 ? 'text-[#002EFF]' : 'text-slate-400'
               }`}
               title={m.readCount > 0 ? `Seen by ${m.readCount}` : 'Delivered'}
             >
@@ -3394,7 +3412,7 @@ function MessageBubble({
               {m.readCount > 0 && <span>{m.readCount}</span>}
             </button>
             {seen && (
-              <p className='mt-0.5 text-[10px] font-medium text-zinc-500 max-w-[220px] break-words'>
+              <p className='mt-0.5 text-[10px] font-medium text-slate-500 max-w-[220px] break-words'>
                 {seen.length
                   ? seen.map((s) => s.fullname).join(', ')
                   : 'No one yet'}
