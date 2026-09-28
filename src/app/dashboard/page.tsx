@@ -273,7 +273,7 @@ export default function AcademyDashboard() {
     {
       group: 'Account',
       items: [
-        { icon: Sparkles, label: 'Upgrade Plans', view: 'unlock' as ViewState },
+        { icon: Sparkles, label: 'Upgrade Plan', view: 'unlock' as ViewState },
         { icon: Settings, label: 'Settings', view: 'settings' as ViewState },
         { icon: LifeBuoy, label: 'Support', view: 'support' as ViewState },
       ],
