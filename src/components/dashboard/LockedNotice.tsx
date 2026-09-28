@@ -40,7 +40,7 @@ export function LockedNotice({
         onClick={goToUnlock}
         className='mt-5 inline-flex items-center gap-2 h-11 px-6 bg-[#002EFF] text-white rounded-xl font-black text-[11px] uppercase tracking-wide hover:bg-blue-700'
       >
-        <Sparkles size={15} /> Unlock more
+        <Sparkles size={15} /> Upgrade Plans
       </button>
     </div>
   )

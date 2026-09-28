@@ -148,7 +148,7 @@ limits; L3 is unlimited.
   - **Community** hidden/locked below L2; **Assignments** locked below L3.
   - **Live classes / tests / materials** are **count-limited** by the admin caps
     (default 5/10/∞ etc.), not just on/off — show "You've reached your free limit
-    — unlock more" past the cap.
+    — Upgrade plans" past the cap.
   - **Free classes** (`isFree`) are always joinable by everyone and never count
     toward the cap.
   - Locked items show a small lock + route to the **Unlock** (Plans) screen.

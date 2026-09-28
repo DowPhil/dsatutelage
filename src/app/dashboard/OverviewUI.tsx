@@ -374,7 +374,7 @@
 //   return (
 //     <div className="space-y-6 max-w-6xl mx-auto px-1 sm:px-0 animate-in fade-in slide-in-from-bottom-3 duration-500">
 //       {/* --- MAIN WELCOME & COUNTDOWN HERO BANNER --- */}
-//       <section className="relative overflow-hidden bg-gradient-to-br from-[#002EFF] via-blue-600 to-indigo-700 dark:from-blue-900 dark:via-indigo-900 dark:to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl shadow-blue-600/10 dark:shadow-none border border-blue-500/20">
+//       <section className="relative overflow-hidden bg-gradient-to-br from-[#002EFF] via-blue-600 to-indigo-700 dark:from-blue-900 dark:via-indigo-900 dark:to-slate-900 rounded-3xl p-5 sm:p-8 text-white shadow-xl shadow-blue-600/10 dark:shadow-none border border-blue-500/20">
 //         <div className="relative z-10 space-y-6">
 //           {/* Top Badges Row */}
 //           <div className="flex flex-wrap items-center gap-2">
@@ -440,33 +440,39 @@
 //                     </div>
 //                   </div>
 //                 ) : (
-//                   <div className="flex items-center gap-2 sm:gap-3">
-//                     <div className="flex flex-col items-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px]">
-//                       <span className="text-2xl sm:text-3xl font-black text-white tracking-tighter tabular-nums">
+//                   <div className="flex items-center justify-between sm:justify-start gap-1 sm:gap-2.5 max-w-full overflow-hidden">
+//                     <div className="flex flex-col items-center justify-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-1.5 sm:p-2.5 flex-1 max-w-[70px] min-w-[50px] sm:min-w-[68px]">
+//                       <span className="text-xl sm:text-3xl font-black text-white tracking-tighter tabular-nums leading-none">
 //                         {time.days}
 //                       </span>
-//                       <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-0.5">DAYS</span>
+//                       <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-1">DAYS</span>
 //                     </div>
-//                     <span className="text-lg font-black text-white/40">:</span>
-//                     <div className="flex flex-col items-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px]">
-//                       <span className="text-2xl sm:text-3xl font-black text-white tracking-tighter tabular-nums">
+
+//                     <span className="text-base sm:text-lg font-black text-white/40 shrink-0">:</span>
+
+//                     <div className="flex flex-col items-center justify-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-1.5 sm:p-2.5 flex-1 max-w-[70px] min-w-[50px] sm:min-w-[68px]">
+//                       <span className="text-xl sm:text-3xl font-black text-white tracking-tighter tabular-nums leading-none">
 //                         {String(time.hours).padStart(2, '0')}
 //                       </span>
-//                       <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-0.5">HRS</span>
+//                       <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-1">HRS</span>
 //                     </div>
-//                     <span className="text-lg font-black text-white/40">:</span>
-//                     <div className="flex flex-col items-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px]">
-//                       <span className="text-2xl sm:text-3xl font-black text-white tracking-tighter tabular-nums">
+
+//                     <span className="text-base sm:text-lg font-black text-white/40 shrink-0">:</span>
+
+//                     <div className="flex flex-col items-center justify-center bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-1.5 sm:p-2.5 flex-1 max-w-[70px] min-w-[50px] sm:min-w-[68px]">
+//                       <span className="text-xl sm:text-3xl font-black text-white tracking-tighter tabular-nums leading-none">
 //                         {String(time.minutes).padStart(2, '0')}
 //                       </span>
-//                       <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-0.5">MIN</span>
+//                       <span className="text-[8px] font-extrabold text-blue-200 uppercase mt-1">MIN</span>
 //                     </div>
-//                     <span className="text-lg font-black text-white/40">:</span>
-//                     <div className="flex flex-col items-center bg-[#FCB900] text-[#002EFF] border border-yellow-300 rounded-2xl p-2.5 min-w-[62px] sm:min-w-[70px] shadow-md">
-//                       <span className="text-2xl sm:text-3xl font-black tracking-tighter tabular-nums">
+
+//                     <span className="text-base sm:text-lg font-black text-white/40 shrink-0">:</span>
+
+//                     <div className="flex flex-col items-center justify-center bg-[#FCB900] text-[#002EFF] border border-yellow-300 rounded-2xl p-1.5 sm:p-2.5 flex-1 max-w-[70px] min-w-[50px] sm:min-w-[68px] shadow-md">
+//                       <span className="text-xl sm:text-3xl font-black tracking-tighter tabular-nums leading-none">
 //                         {String(time.seconds).padStart(2, '0')}
 //                       </span>
-//                       <span className="text-[8px] font-black uppercase mt-0.5 opacity-80">SEC</span>
+//                       <span className="text-[8px] font-black uppercase mt-1 opacity-80">SEC</span>
 //                     </div>
 //                   </div>
 //                 )}
@@ -584,7 +590,6 @@
 //     </div>
 //   )
 // }
-
 
 
 
@@ -908,6 +913,7 @@ export default function OverviewUI({
   const [streak, setStreak] = useState(0)
   const [now, setNow] = useState<Date | null>(null)
   const [isPerfLoading, setIsPerfLoading] = useState(true)
+  const [showPlans, setShowPlans] = useState(false)
 
   useEffect(() => {
     setNow(new Date())
@@ -1092,6 +1098,14 @@ export default function OverviewUI({
             >
               <span>TAKE QUIZZES</span>
               <BrainCircuit size={16} />
+            </Button>
+
+            <Button
+              onClick={() => { setView('unlock') }}
+              className="bg-white/20 hover:bg-white/30 text-white border border-white/30 font-black rounded-2xl text-xs px-6 h-11 backdrop-blur-md shadow-lg active:scale-[0.98] transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <span>UPGRADE PLAN</span>
+              <Sparkles size={16} className="text-[#FCB900]" />
             </Button>
 
             {isDSAite && (
