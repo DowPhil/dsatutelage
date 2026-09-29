@@ -13,7 +13,7 @@
 // only the hosted URL is sent to the API. Messages sync by polling the channel.
 // Role rules are also enforced server-side — this component only shapes the UI.
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   Send,
   Image as ImageIcon,
@@ -454,6 +454,8 @@ export default function Community({
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const recTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  
+  const recSecsRef = useRef(0)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const imageInput = useRef<HTMLInputElement | null>(null)
@@ -582,78 +584,214 @@ export default function Community({
       prependRef.current = null
     }
   }, [messages])
-  const loadOlder = useCallback(async () => {
+  // const loadOlder = useCallback(async () => {
+  //   const oldest = messages[0]
+  //   if (!oldest || loadingOlder) return
+  //   setLoadingOlder(true)
+  //   // Reading history means the reader is up top; the newest-in-view effect
+  //   // must not drag them back down when the page arrives.
+  //   setAtBottom(false)
+  //   const box = scrollRef.current
+  //   const heightBefore = box ? box.scrollHeight : 0
+  //   try {
+  //     const rows = (await dsaApi.community.list(
+  //       { limit: PAGE_SIZE, channelId: activeChannel, before: oldest.id },
+  //       token,
+  //     )) as Record<string, unknown>[]
+  //     const older = rows.map(normalize).sort((a, b) => a.createdAt - b.createdAt)
+  //     setOlderDone(rows.length < PAGE_SIZE)
+  //     if (older.length) {
+  //       // The layout effect below puts the scroll back where it was once the
+  //       // older messages are in the DOM.
+  //       prependRef.current = heightBefore
+  //       setMessages((prev) => {
+  //         const have = new Set(prev.map((m) => m.id))
+  //         return [...older.filter((m) => !have.has(m.id)), ...prev]
+  //       })
+  //     }
+  //   } catch (e) {
+  //     setError(e instanceof Error ? e.message : 'Could not load earlier messages.')
+  //   } finally {
+  //     setLoadingOlder(false)
+  //   }
+  // }, [messages, loadingOlder, activeChannel, token, normalize])
+
+
+  const loadOlder = useCallback(
+  async () => {
     const oldest = messages[0]
+
     if (!oldest || loadingOlder) return
+
     setLoadingOlder(true)
-    // Reading history means the reader is up top; the newest-in-view effect
-    // must not drag them back down when the page arrives.
     setAtBottom(false)
+
     const box = scrollRef.current
     const heightBefore = box ? box.scrollHeight : 0
+
     try {
       const rows = (await dsaApi.community.list(
-        { limit: PAGE_SIZE, channelId: activeChannel, before: oldest.id },
+        {
+          limit: PAGE_SIZE,
+          channelId: activeChannel,
+          before: oldest.id,
+        },
         token,
       )) as Record<string, unknown>[]
-      const older = rows.map(normalize).sort((a, b) => a.createdAt - b.createdAt)
+
+      const older = rows
+        .map(normalize)
+        .sort((a, b) => a.createdAt - b.createdAt)
+
       setOlderDone(rows.length < PAGE_SIZE)
+
       if (older.length) {
-        // The layout effect below puts the scroll back where it was once the
-        // older messages are in the DOM.
         prependRef.current = heightBefore
+
         setMessages((prev) => {
           const have = new Set(prev.map((m) => m.id))
-          return [...older.filter((m) => !have.has(m.id)), ...prev]
+
+          return [
+            ...older.filter((m) => !have.has(m.id)),
+            ...prev,
+          ]
         })
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load earlier messages.')
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not load earlier messages.',
+      )
     } finally {
       setLoadingOlder(false)
     }
-  }, [messages, loadingOlder, activeChannel, token, normalize])
+  },
+  [messages, loadingOlder, activeChannel, token, normalize],
+)
+
+  // const load = useCallback(
+  //   async (initial = false) => {
+  //     // Switching channel: show the new room's own loading state at once and
+  //     // drop the old room's messages, so the tap feels instant instead of
+  //     // leaving the previous chat on screen until the fetch returns.
+  //     const switching = msgChannelRef.current !== activeChannel
+  //     if (initial || switching) setLoading(true)
+  //     if (switching) {
+  //       setMessages([])
+  //       setOlderDone(false)
+  //     }
+  //     try {
+  //       const rows = (await dsaApi.community.list(
+  //         { limit: PAGE_SIZE, channelId: activeChannel },
+  //         token,
+  //       )) as Record<string, unknown>[]
+  //       const mapped = rows.map(normalize).sort((a, b) => a.createdAt - b.createdAt)
+  //       // Only the newest page comes back. Keep any earlier pages the reader
+  //       // has already scrolled up into, unless this is another channel.
+  //       const sameChannel = msgChannelRef.current === activeChannel
+  //       setMessages((prev) => {
+  //         if (!sameChannel || !prev.length) return mapped
+  //         const oldestFresh = mapped[0]?.createdAt ?? 0
+  //         const fresh = new Set(mapped.map((m) => m.id))
+  //         const kept = prev.filter((m) => m.createdAt < oldestFresh && !fresh.has(m.id))
+  //         return [...kept, ...mapped]
+  //       })
+  //       if (!sameChannel) setOlderDone(rows.length < PAGE_SIZE)
+  //       msgChannelRef.current = activeChannel
+  //       setNotReady(false)
+  //     } catch {
+  //       // The channel endpoint may not be live yet — show a soft notice rather
+  //       // than a crash. Sending will surface the real error inline if tried.
+  //       if (initial) setNotReady(true)
+  //     } finally {
+  //       setLoading(false)
+  //     }
+  //   },
+  //   [normalize, token, activeChannel],
+  // )
+
 
   const load = useCallback(
-    async (initial = false) => {
-      // Switching channel: show the new room's own loading state at once and
-      // drop the old room's messages, so the tap feels instant instead of
-      // leaving the previous chat on screen until the fetch returns.
-      const switching = msgChannelRef.current !== activeChannel
-      if (initial || switching) setLoading(true)
+  async (initial = false) => {
+    const channel = activeChannel
+
+    // Detect whether we're loading a different channel.
+    const switching = msgChannelRef.current !== channel
+
+    if (initial || switching) {
+      setLoading(true)
+    }
+
+    if (switching) {
+      setMessages([])
+      setOlderDone(false)
+    }
+
+    try {
+      const rows = (await dsaApi.community.list(
+        {
+          limit: PAGE_SIZE,
+          channelId: channel,
+        },
+        token,
+      )) as Record<string, unknown>[]
+
+      // Ignore a response if the user has already switched channels
+      // while this request was still running.
+      if (msgChannelRef.current !== channel && !switching) {
+        return
+      }
+
+      const mapped = rows
+        .map(normalize)
+        .sort((a, b) => a.createdAt - b.createdAt)
+
+      setMessages((prev) => {
+        // New channel: use only the messages belonging to it.
+        if (switching || !prev.length) {
+          return mapped
+        }
+
+        // Keep messages that were loaded from older pages.
+        const freshIds = new Set(mapped.map((m) => m.id))
+        const oldestFresh = mapped[0]?.createdAt ?? Infinity
+
+        const older = prev.filter(
+          (m) => m.createdAt < oldestFresh && !freshIds.has(m.id),
+        )
+
+        // Avoid replacing state when the fetched page hasn't changed.
+        const next = [...older, ...mapped]
+
+        if (
+          next.length === prev.length &&
+          next.every(
+            (message, index) => message.id === prev[index]?.id,
+          )
+        ) {
+          return prev
+        }
+
+        return next
+      })
+
       if (switching) {
-        setMessages([])
-        setOlderDone(false)
+        setOlderDone(rows.length < PAGE_SIZE)
       }
-      try {
-        const rows = (await dsaApi.community.list(
-          { limit: PAGE_SIZE, channelId: activeChannel },
-          token,
-        )) as Record<string, unknown>[]
-        const mapped = rows.map(normalize).sort((a, b) => a.createdAt - b.createdAt)
-        // Only the newest page comes back. Keep any earlier pages the reader
-        // has already scrolled up into, unless this is another channel.
-        const sameChannel = msgChannelRef.current === activeChannel
-        setMessages((prev) => {
-          if (!sameChannel || !prev.length) return mapped
-          const oldestFresh = mapped[0]?.createdAt ?? 0
-          const fresh = new Set(mapped.map((m) => m.id))
-          const kept = prev.filter((m) => m.createdAt < oldestFresh && !fresh.has(m.id))
-          return [...kept, ...mapped]
-        })
-        if (!sameChannel) setOlderDone(rows.length < PAGE_SIZE)
-        msgChannelRef.current = activeChannel
-        setNotReady(false)
-      } catch {
-        // The channel endpoint may not be live yet — show a soft notice rather
-        // than a crash. Sending will surface the real error inline if tried.
-        if (initial) setNotReady(true)
-      } finally {
-        setLoading(false)
+
+      msgChannelRef.current = channel
+      setNotReady(false)
+    } catch {
+      if (initial || switching) {
+        setNotReady(true)
       }
-    },
-    [normalize, token, activeChannel],
-  )
+    } finally {
+      setLoading(false)
+    }
+  },
+  [normalize, token, activeChannel],
+)
 
   // Keep the channel lock state in sync (best-effort: if the settings endpoint
   // isn't live yet, treat the channel as unlocked so posting still works).
@@ -666,28 +804,56 @@ export default function Community({
     }
   }, [token, activeChannel])
 
-  // Initial load + light polling + refresh when the tab regains focus.
-  useEffect(() => {
-    load(true)
-    loadSettings()
-    // Every open tab polls, so a class of a few hundred is a few hundred
-    // pollers. Skip the tick while the tab is hidden — nobody is reading it —
-    // and catch up the moment it is shown again.
-    const poll = setInterval(() => {
-      if (document.hidden || liveRef.current) return
-      load(false)
-      loadSettings()
-    }, 6000)
-    const onFocus = () => {
-      load(false)
-      loadSettings()
-    }
-    window.addEventListener('focus', onFocus)
-    return () => {
-      clearInterval(poll)
-      window.removeEventListener('focus', onFocus)
-    }
-  }, [load, loadSettings])
+  // // Initial load + light polling + refresh when the tab regains focus.
+  // useEffect(() => {
+  //   load(true)
+  //   loadSettings()
+  //   // Every open tab polls, so a class of a few hundred is a few hundred
+  //   // pollers. Skip the tick while the tab is hidden — nobody is reading it —
+  //   // and catch up the moment it is shown again.
+  //   const poll = setInterval(() => {
+  //     if (document.hidden || liveRef.current) return
+  //     load(false)
+  //     loadSettings()
+  //   }, 6000)
+  //   const onFocus = () => {
+  //     load(false)
+  //     loadSettings()
+  //   }
+  //   window.addEventListener('focus', onFocus)
+  //   return () => {
+  //     clearInterval(poll)
+  //     window.removeEventListener('focus', onFocus)
+  //   }
+  // }, [load, loadSettings])
+
+
+
+  // Initial load + fallback polling when realtime is unavailable.
+useEffect(() => {
+  load(true)
+  loadSettings()
+
+  // Socket.IO handles updates when realtime is connected.
+  // Only poll when realtime is unavailable.
+  const poll = setInterval(() => {
+    if (document.hidden || liveRef.current) return
+
+    load(false)
+  }, 15000)
+
+  // Refresh messages when the user returns to the tab.
+  const onFocus = () => {
+    load(false)
+  }
+
+  window.addEventListener('focus', onFocus)
+
+  return () => {
+    clearInterval(poll)
+    window.removeEventListener('focus', onFocus)
+  }
+}, [load, loadSettings])
 
   // Opening a channel: remember where this browser left it, so anything newer
   // gets the "New messages" line.
@@ -997,36 +1163,86 @@ export default function Community({
     [load, token, activeChannel, replyTarget, normalize],
   )
 
-  // Tap an emoji to add it, tap it again to take it back. The bubble updates
-  // straight away so it feels instant; the reload settles the real tally.
-  const react = useCallback(
-    async (id: string, emoji: string) => {
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== id) return m
-          const existing = m.reactions.find((r) => r.emoji === emoji)
-          if (!existing)
-            return { ...m, reactions: [...m.reactions, { emoji, count: 1, mine: true }] }
-          const count = existing.count + (existing.mine ? -1 : 1)
+  // // Tap an emoji to add it, tap it again to take it back. The bubble updates
+  // // straight away so it feels instant; the reload settles the real tally.
+  // const react = useCallback(
+  //   async (id: string, emoji: string) => {
+  //     setMessages((prev) =>
+  //       prev.map((m) => {
+  //         if (m.id !== id) return m
+  //         const existing = m.reactions.find((r) => r.emoji === emoji)
+  //         if (!existing)
+  //           return { ...m, reactions: [...m.reactions, { emoji, count: 1, mine: true }] }
+  //         const count = existing.count + (existing.mine ? -1 : 1)
+  //         return {
+  //           ...m,
+  //           reactions: m.reactions
+  //             .map((r) =>
+  //               r.emoji === emoji ? { ...r, count, mine: !r.mine } : r,
+  //             )
+  //             .filter((r) => r.count > 0),
+  //         }
+  //       }),
+  //     )
+  //     try {
+  //       await dsaApi.community.react(id, emoji, token)
+  //     } catch {
+  //       /* the next poll puts the real tally back */
+  //     }
+  //     load(false)
+  //   },
+  //   [load, token],
+  // )
+
+
+  // Tap an emoji to add it, tap it again to take it back.
+// The bubble updates straight away so it feels instant.
+const react = useCallback(
+  async (id: string, emoji: string) => {
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== id) return m
+
+        const existing = m.reactions.find((r) => r.emoji === emoji)
+
+        if (!existing) {
           return {
             ...m,
-            reactions: m.reactions
-              .map((r) =>
-                r.emoji === emoji ? { ...r, count, mine: !r.mine } : r,
-              )
-              .filter((r) => r.count > 0),
+            reactions: [
+              ...m.reactions,
+              { emoji, count: 1, mine: true },
+            ],
           }
-        }),
-      )
-      try {
-        await dsaApi.community.react(id, emoji, token)
-      } catch {
-        /* the next poll puts the real tally back */
-      }
-      load(false)
-    },
-    [load, token],
-  )
+        }
+
+        const count = existing.count + (existing.mine ? -1 : 1)
+
+        return {
+          ...m,
+          reactions: m.reactions
+            .map((r) =>
+              r.emoji === emoji
+                ? { ...r, count, mine: !r.mine }
+                : r,
+            )
+            .filter((r) => r.count > 0),
+        }
+      }),
+    )
+
+    try {
+      await dsaApi.community.react(id, emoji, token)
+    } catch {
+      // The next realtime update or fallback poll restores the real tally.
+    }
+
+    // Only reload when realtime is unavailable.
+    if (!liveRef.current) {
+      void load(false)
+    }
+  },
+  [load, token],
+)
 
   // Replying to a message you can no longer see (deleted mid-reply) is a dead
   // end — drop the target when it leaves the feed.
@@ -1099,92 +1315,249 @@ export default function Community({
     [post],
   )
 
+  // // ---- Voice notes (tutors) ----
+  // const startRecording = useCallback(async () => {
+  //   setError(null)
+  //   if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
+  //     setError('Voice recording is not supported on this device.')
+  //     return
+  //   }
+  //   try {
+  //     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  //     const rec = new MediaRecorder(stream)
+  //     chunksRef.current = []
+  //     rec.ondataavailable = (ev) => {
+  //       if (ev.data.size > 0) chunksRef.current.push(ev.data)
+  //     }
+  //     rec.onstop = async () => {
+  //       stream.getTracks().forEach((t) => t.stop())
+  //       if (recTimerRef.current) clearInterval(recTimerRef.current)
+  //       const secs = recSecs
+  //       setRecording(false)
+  //       setRecSecs(0)
+  //       const blob = new Blob(chunksRef.current, {
+  //         type: rec.mimeType || 'audio/webm',
+  //       })
+  //       if (blob.size === 0) return
+  //       const ext = (rec.mimeType || 'audio/webm').includes('mp4') ? 'm4a' : 'webm'
+  //       const file = new File([blob], `voice-note.${ext}`, { type: blob.type })
+  //       setUploading(true)
+  //       try {
+  //         const res = await uploadToCloudinary(file, 'dsa/community')
+  //         await post({
+  //           type: 'audio',
+  //           fileUrl: res.url,
+  //           fileName: file.name,
+  //           fileType: file.type || undefined,
+  //           fileSize: res.bytes ?? file.size,
+  //           durationSec: secs,
+  //         })
+  //       } catch (e) {
+  //         setError(e instanceof Error ? e.message : 'Could not send voice note.')
+  //       } finally {
+  //         setUploading(false)
+  //       }
+  //     }
+  //     recorderRef.current = rec
+  //     rec.start()
+  //     setRecording(true)
+  //     setRecSecs(0)
+  //     recTimerRef.current = setInterval(() => setRecSecs((s) => s + 1), 1000)
+  //   } catch {
+  //     setError('Microphone permission was denied.')
+  //   }
+  // }, [post, recSecs])
+
+
   // ---- Voice notes (tutors) ----
-  const startRecording = useCallback(async () => {
-    setError(null)
-    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
-      setError('Voice recording is not supported on this device.')
-      return
+const startRecording = useCallback(async () => {
+  setError(null)
+
+  if (
+    typeof navigator === 'undefined' ||
+    !navigator.mediaDevices?.getUserMedia
+  ) {
+    setError('Voice recording is not supported on this device.')
+    return
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const rec = new MediaRecorder(stream)
+
+    chunksRef.current = []
+    recSecsRef.current = 0
+
+    rec.ondataavailable = (ev) => {
+      if (ev.data.size > 0) {
+        chunksRef.current.push(ev.data)
+      }
     }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const rec = new MediaRecorder(stream)
-      chunksRef.current = []
-      rec.ondataavailable = (ev) => {
-        if (ev.data.size > 0) chunksRef.current.push(ev.data)
+
+    rec.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop())
+
+      if (recTimerRef.current) {
+        clearInterval(recTimerRef.current)
+        recTimerRef.current = null
       }
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop())
-        if (recTimerRef.current) clearInterval(recTimerRef.current)
-        const secs = recSecs
-        setRecording(false)
-        setRecSecs(0)
-        const blob = new Blob(chunksRef.current, {
-          type: rec.mimeType || 'audio/webm',
-        })
-        if (blob.size === 0) return
-        const ext = (rec.mimeType || 'audio/webm').includes('mp4') ? 'm4a' : 'webm'
-        const file = new File([blob], `voice-note.${ext}`, { type: blob.type })
-        setUploading(true)
-        try {
-          const res = await uploadToCloudinary(file, 'dsa/community')
-          await post({
-            type: 'audio',
-            fileUrl: res.url,
-            fileName: file.name,
-            fileType: file.type || undefined,
-            fileSize: res.bytes ?? file.size,
-            durationSec: secs,
-          })
-        } catch (e) {
-          setError(e instanceof Error ? e.message : 'Could not send voice note.')
-        } finally {
-          setUploading(false)
-        }
-      }
-      recorderRef.current = rec
-      rec.start()
-      setRecording(true)
+
+      const secs = recSecsRef.current
+
+      setRecording(false)
       setRecSecs(0)
-      recTimerRef.current = setInterval(() => setRecSecs((s) => s + 1), 1000)
-    } catch {
-      setError('Microphone permission was denied.')
+      recSecsRef.current = 0
+
+      const blob = new Blob(chunksRef.current, {
+        type: rec.mimeType || 'audio/webm',
+      })
+
+      if (blob.size === 0) return
+
+      const ext = (rec.mimeType || 'audio/webm').includes('mp4')
+        ? 'm4a'
+        : 'webm'
+
+      const file = new File(
+        [blob],
+        `voice-note.${ext}`,
+        { type: blob.type },
+      )
+
+      setUploading(true)
+
+      try {
+        const res = await uploadToCloudinary(
+          file,
+          'dsa/community',
+        )
+
+        await post({
+          type: 'audio',
+          fileUrl: res.url,
+          fileName: file.name,
+          fileType: file.type || undefined,
+          fileSize: res.bytes ?? file.size,
+          durationSec: secs,
+        })
+      } catch (e) {
+        setError(
+          e instanceof Error
+            ? e.message
+            : 'Could not send voice note.',
+        )
+      } finally {
+        setUploading(false)
+      }
     }
-  }, [post, recSecs])
+
+    recorderRef.current = rec
+    rec.start()
+
+    setRecording(true)
+    setRecSecs(0)
+
+    recTimerRef.current = setInterval(() => {
+      recSecsRef.current += 1
+      setRecSecs(recSecsRef.current)
+    }, 1000)
+  } catch {
+    setError('Microphone permission was denied.')
+  }
+}, [post])
+
+  // const stopRecording = useCallback(() => {
+  //   recorderRef.current?.stop()
+  // }, [])
+
+  // const cancelRecording = useCallback(() => {
+  //   const rec = recorderRef.current
+  //   if (!rec) return
+  //   rec.onstop = null
+  //   rec.stream?.getTracks?.().forEach((t) => t.stop())
+  //   try {
+  //     rec.stop()
+  //   } catch {
+  //     /* already stopped */
+  //   }
+  //   if (recTimerRef.current) clearInterval(recTimerRef.current)
+  //   chunksRef.current = []
+  //   setRecording(false)
+  //   setRecSecs(0)
+  // }, [])
+
 
   const stopRecording = useCallback(() => {
-    recorderRef.current?.stop()
-  }, [])
+  recorderRef.current?.stop()
+}, [])
 
-  const cancelRecording = useCallback(() => {
-    const rec = recorderRef.current
-    if (!rec) return
-    rec.onstop = null
-    rec.stream?.getTracks?.().forEach((t) => t.stop())
-    try {
-      rec.stop()
-    } catch {
-      /* already stopped */
-    }
-    if (recTimerRef.current) clearInterval(recTimerRef.current)
-    chunksRef.current = []
-    setRecording(false)
-    setRecSecs(0)
-  }, [])
+const cancelRecording = useCallback(() => {
+  const rec = recorderRef.current
+  if (!rec) return
+
+  rec.onstop = null
+  rec.stream?.getTracks?.().forEach((t) => t.stop())
+
+  try {
+    rec.stop()
+  } catch {
+    // already stopped
+  }
+
+  if (recTimerRef.current) {
+    clearInterval(recTimerRef.current)
+    recTimerRef.current = null
+  }
+
+  chunksRef.current = []
+  recSecsRef.current = 0
+
+  setRecording(false)
+  setRecSecs(0)
+  recorderRef.current = null
+}, [])
+
+  // const remove = useCallback(
+  //   async (id: string) => {
+  //     const prev = messages
+  //     setMessages((m) => m.filter((x) => x.id !== id))
+  //     try {
+  //       await dsaApi.community.remove(id, token)
+  //     } catch (e) {
+  //       setMessages(prev) // put it back if the delete failed
+  //       setError(e instanceof Error ? e.message : 'Could not delete message.')
+  //     }
+  //   },
+  //   [messages, token],
+  // )
 
   const remove = useCallback(
-    async (id: string) => {
-      const prev = messages
-      setMessages((m) => m.filter((x) => x.id !== id))
-      try {
-        await dsaApi.community.remove(id, token)
-      } catch (e) {
-        setMessages(prev) // put it back if the delete failed
-        setError(e instanceof Error ? e.message : 'Could not delete message.')
-      }
-    },
-    [messages, token],
-  )
+  async (id: string) => {
+    let previous: Msg[] = []
+
+    setMessages((current) => {
+      previous = current
+      return current.filter((x) => x.id !== id)
+    })
+
+    try {
+      await dsaApi.community.remove(id, token)
+    } catch (e) {
+      setMessages((current) => {
+        // Restore the deleted message without replacing newer changes.
+        const existingIds = new Set(current.map((x) => x.id))
+        const restored = previous.filter((x) => !existingIds.has(x.id))
+
+        return restored.length
+          ? [...current, ...restored].sort((a, b) => a.createdAt - b.createdAt)
+          : current
+      })
+
+      setError(e instanceof Error ? e.message : 'Could not delete message.')
+    }
+  },
+  [token],
+)
 
   // Edit own message text (author only).
   const editMessage = useCallback(
@@ -1360,58 +1733,138 @@ export default function Community({
     }
   }, [locked, token, activeChannel])
 
-  // ---- Channels ----
-  const loadChannels = useCallback(async () => {
-    let list: CommunityChannel[]
-    try {
-      const rows = (await dsaApi.community.channels(token)) as Record<
-        string,
-        unknown
-      >[]
-      list = rows.map(toChannel)
-      channelFailsRef.current = 0
-      setOffline(false)
-    } catch {
-      // The server could not be reached. This used to swap in a made-up list
-      // (SS1, SS2, WAEC, JAMB…) so the switcher "still worked" — which looked
-      // exactly like a broken deployment. Keep whatever was loaded before,
-      // and only warn after a few misses in a row — a single dropped request
-      // on a phone network is normal, and if the socket is live the room is
-      // working anyway.
-      channelFailsRef.current += 1
-      if (channelFailsRef.current >= 3 && !liveRef.current) setOffline(true)
-      return
+  // // ---- Channels ----
+  // const loadChannels = useCallback(async () => {
+  //   let list: CommunityChannel[]
+  //   try {
+  //     const rows = (await dsaApi.community.channels(token)) as Record<
+  //       string,
+  //       unknown
+  //     >[]
+  //     list = rows.map(toChannel)
+  //     channelFailsRef.current = 0
+  //     setOffline(false)
+  //   } catch {
+  //     // The server could not be reached. This used to swap in a made-up list
+  //     // (SS1, SS2, WAEC, JAMB…) so the switcher "still worked" — which looked
+  //     // exactly like a broken deployment. Keep whatever was loaded before,
+  //     // and only warn after a few misses in a row — a single dropped request
+  //     // on a phone network is normal, and if the socket is live the room is
+  //     // working anyway.
+  //     channelFailsRef.current += 1
+  //     if (channelFailsRef.current >= 3 && !liveRef.current) setOffline(true)
+  //     return
+  //   }
+  //   let visible = list
+  //   if (mode === 'student') {
+  //     // Students see General + the community for each category they belong to
+  //     // (their class AND their exam track).
+  //     visible = channelsForCategories(list, categoriesForStudent(getUser()))
+  //   } else if (mode === 'tutor') {
+  //     // Tutors are scoped to the communities for the categories they teach —
+  //     // derived from their assigned courses. Fail open (show all) if we can't
+  //     // resolve any courses, so a tutor is never locked out of the switcher.
+  //     try {
+  //       const courses = (await dsaApi.courses.list(
+  //         { tutorId: 'me' },
+  //         token,
+  //       )) as Record<string, unknown>[]
+  //       const cats = [
+  //         ...new Set(
+  //           courses.map((c) => String(c.category ?? '')).filter(Boolean),
+  //         ),
+  //       ]
+  //       if (cats.length) visible = channelsForCategories(list, cats)
+  //     } catch {
+  //       /* keep all channels visible */
+  //     }
+  //   }
+  //   // Admin sees every channel (moderation).
+  //   setChannels(visible)
+  //   setActiveChannel((cur) =>
+  //     visible.some((c) => c.id === cur) ? cur : 'general',
+  //   )
+  // }, [mode, token])
+
+
+  const tutorCategoriesRef = useRef<string[] | null>(null)
+
+const loadChannels = useCallback(async () => {
+  let list: CommunityChannel[]
+
+  try {
+    const rows = (await dsaApi.community.channels(token)) as Record<
+      string,
+      unknown
+    >[]
+
+    list = rows.map(toChannel)
+    channelFailsRef.current = 0
+    setOffline(false)
+  } catch {
+    channelFailsRef.current += 1
+
+    if (channelFailsRef.current >= 3 && !liveRef.current) {
+      setOffline(true)
     }
-    let visible = list
-    if (mode === 'student') {
-      // Students see General + the community for each category they belong to
-      // (their class AND their exam track).
-      visible = channelsForCategories(list, categoriesForStudent(getUser()))
-    } else if (mode === 'tutor') {
-      // Tutors are scoped to the communities for the categories they teach —
-      // derived from their assigned courses. Fail open (show all) if we can't
-      // resolve any courses, so a tutor is never locked out of the switcher.
+
+    return
+  }
+
+  let visible = list
+
+  if (mode === 'student') {
+    visible = channelsForCategories(
+      list,
+      categoriesForStudent(getUser()),
+    )
+  } else if (mode === 'tutor') {
+    let cats = tutorCategoriesRef.current
+
+    if (cats === null) {
       try {
         const courses = (await dsaApi.courses.list(
           { tutorId: 'me' },
           token,
         )) as Record<string, unknown>[]
-        const cats = [
+
+        cats = [
           ...new Set(
-            courses.map((c) => String(c.category ?? '')).filter(Boolean),
+            courses
+              .map((c) => String(c.category ?? ''))
+              .filter(Boolean),
           ),
         ]
-        if (cats.length) visible = channelsForCategories(list, cats)
+
+        tutorCategoriesRef.current = cats
       } catch {
-        /* keep all channels visible */
+        cats = []
       }
     }
-    // Admin sees every channel (moderation).
-    setChannels(visible)
-    setActiveChannel((cur) =>
-      visible.some((c) => c.id === cur) ? cur : 'general',
-    )
-  }, [mode, token])
+
+    if (cats.length) {
+      visible = channelsForCategories(list, cats)
+    }
+  }
+
+  setChannels((prev) => {
+    if (
+      prev.length === visible.length &&
+      prev.every(
+        (channel, index) => channel.id === visible[index]?.id,
+      )
+    ) {
+      return prev
+    }
+
+    return visible
+  })
+
+  setActiveChannel((cur) =>
+    visible.some((c) => c.id === cur) ? cur : 'general',
+  )
+}, [mode, token])
+
 
   // Unread counts ride along with the channel list, so refresh it on the same
   // beat as the messages (slower — it is only a badge).
@@ -2448,9 +2901,19 @@ export default function Community({
 
           <div
             ref={scrollRef}
+            // onScroll={(e) => {
+            //   const el = e.currentTarget
+            //   setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80)
+            // }}
+
             onScroll={(e) => {
               const el = e.currentTarget
-              setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 80)
+              const nextAtBottom =
+                el.scrollHeight - el.scrollTop - el.clientHeight < 80
+
+              setAtBottom((prev) =>
+                prev === nextAtBottom ? prev : nextAtBottom,
+              )
             }}
             className='h-full space-y-3 overflow-y-auto px-3 py-4 custom-scrollbar sm:px-5'
           >
@@ -2514,6 +2977,22 @@ export default function Community({
                           <span className='h-px flex-1 bg-[#002EFF]/30' />
                         </div>
                       )}
+                      {/* <MessageBubble
+                        m={m}
+                        grouped={grouped}
+                        showDelete={isModerator || m.own}
+                        canEdit={m.own && m.type === 'text'}
+                        canPin={canManage}
+                        onDelete={() => remove(m.id)}
+                        onEdit={(newText) => editMessage(m.id, newText)}
+                        onPin={() => togglePin(m)}
+                        onVote={(option) => votePoll(m.id, option)}
+                        onSeen={() => loadReads(m.id)}
+                        canReply={canCompose && !postingBlocked}
+                        onReply={() => setReplyTarget(m)}
+                        onReact={(emoji) => react(m.id, emoji)}
+                      /> */}
+
                       <MessageBubble
                         m={m}
                         grouped={grouped}
@@ -2906,7 +3385,73 @@ function AttachItem({
   )
 }
 
-function MessageBubble({
+// function MessageBubble({
+//   m,
+//   grouped,
+//   showDelete,
+//   canEdit,
+//   canPin,
+//   onDelete,
+//   onEdit,
+//   onPin,
+//   onVote,
+//   onSeen,
+//   canReply,
+//   onReply,
+//   onReact,
+// }: {
+//   m: Msg
+//   /** Follows another message from the same person, moments earlier. */
+//   grouped: boolean
+//   showDelete: boolean
+//   canEdit: boolean
+//   canPin: boolean
+//   onDelete: () => void
+//   onEdit: (newText: string) => void
+//   onPin: () => void
+//   onVote: (option: number) => void
+//   onSeen: () => Promise<{ fullname: string }[]>
+//   canReply: boolean
+//   onReply: () => void
+//   onReact: (emoji: string) => void
+// }) {
+//   const [editing, setEditing] = useState(false)
+//   const [draft, setDraft] = useState(m.text ?? '')
+//   const [pickerOpen, setPickerOpen] = useState(false)
+//   // Phones have no hover, so the icon row that appears on desktop never shows.
+//   // There, tapping the bubble opens a bar of touch-sized actions instead.
+//   const [actionsOpen, setActionsOpen] = useState(false)
+//   const closeActions = () => setActionsOpen(false)
+//   // "Seen by" — names are fetched only when the sender taps the row.
+//   const [seen, setSeen] = useState<{ fullname: string }[] | null>(null)
+//   const [seenLoading, setSeenLoading] = useState(false)
+//   const toggleSeen = async () => {
+//     if (seen) return setSeen(null)
+//     setSeenLoading(true)
+//     try {
+//       setSeen(await onSeen())
+//     } catch {
+//       setSeen([])
+//     } finally {
+//       setSeenLoading(false)
+//     }
+//   }
+
+//   const initials = m.senderName
+//     .split(' ')
+//     .map((w) => w[0])
+//     .join('')
+//     .slice(0, 2)
+//     .toUpperCase()
+
+//   const saveEdit = () => {
+//     const t = draft.trim()
+//     setEditing(false)
+//     if (t && t !== m.text) onEdit(t)
+//   }
+
+
+const MessageBubble = memo(function MessageBubble({
   m,
   grouped,
   showDelete,
@@ -2939,16 +3484,22 @@ function MessageBubble({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(m.text ?? '')
   const [pickerOpen, setPickerOpen] = useState(false)
+
   // Phones have no hover, so the icon row that appears on desktop never shows.
   // There, tapping the bubble opens a bar of touch-sized actions instead.
   const [actionsOpen, setActionsOpen] = useState(false)
+
   const closeActions = () => setActionsOpen(false)
+
   // "Seen by" — names are fetched only when the sender taps the row.
   const [seen, setSeen] = useState<{ fullname: string }[] | null>(null)
   const [seenLoading, setSeenLoading] = useState(false)
+
   const toggleSeen = async () => {
     if (seen) return setSeen(null)
+
     setSeenLoading(true)
+
     try {
       setSeen(await onSeen())
     } catch {
@@ -3405,4 +3956,4 @@ function MessageBubble({
       </div>
     </div>
   )
-}
+})
