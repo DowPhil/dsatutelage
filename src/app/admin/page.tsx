@@ -567,6 +567,11 @@ export default function AdminAdmin() {
           label: 'Dashboard',
           icon: LayoutDashboard,
         },
+        {
+          id: 'community' as AdminTab,
+          label: 'Community',
+          icon: MessagesSquare,
+        },
         { id: 'students' as AdminTab, label: 'Students', icon: Users },
         { id: 'notifications' as AdminTab, label: 'Notifications', icon: Bell },
       ],
