@@ -109,6 +109,36 @@ export interface GetUsersParams {
   accessLevel?: string
 }
 
+export interface StudentDetailsResponse {
+  success: boolean
+  data: {
+    id: string
+    studentId?: string
+    fullName: string
+    programme: string[]
+    currentLevel: string
+    learningMode: string
+    department: string
+    examTrack: string
+    phone: string
+    email: string
+    subscriptionPlan: {
+      id: string
+      name: string
+      kind: string
+      amount: number
+      durationMonths: number
+    } | null
+    payment: {
+      status: 'paid' | 'partially_paid' | 'pending' | 'unpaid'
+      totalPaid: number
+      planAmount: number
+      outstandingAmount: number
+    }
+    accountStatus: string
+  }
+}
+
 export interface AdminUserListItem {
   id: string
   fullname: string
@@ -434,6 +464,15 @@ export const adminApi = {
       `/api/admin/users${queryString ? `?${queryString}` : ''}`,
     )
   },
+
+  /**
+ * Get complete student profile/details
+ * Endpoint: GET /api/admin/students/{id}/details
+ */
+getStudentDetails: (id: string) =>
+  adminFetch<StudentDetailsResponse>(
+    `/api/admin/students/${encodeURIComponent(id)}/details`,
+  ),
 
   /**
    * Suspend or reactivate a user account

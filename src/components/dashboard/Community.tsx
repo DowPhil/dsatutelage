@@ -1195,7 +1195,7 @@ useEffect(() => {
   // )
 
 
-  // Tap an emoji to add it, tap it again to take it back.
+// Tap an emoji to add it, tap it again to take it back.
 // The bubble updates straight away so it feels instant.
 const react = useCallback(
   async (id: string, emoji: string) => {
