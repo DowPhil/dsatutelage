@@ -620,6 +620,13 @@ getStudentDetails: (id: string) =>
       body: JSON.stringify(paymentData),
     }),
 
+    offlineHistory: (status: 'approved' | 'rejected', token?: string) =>
+  adminFetch<{
+    success: boolean
+    count: number
+    data: Record<string, unknown>[]
+  }>(`/api/admin/payments/offline?status=${status}`),
+
   // ==========================================
   // ANNOUNCEMENTS MANAGEMENT
   // ==========================================
