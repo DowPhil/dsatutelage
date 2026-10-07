@@ -443,57 +443,36 @@ import DashboardShell, {
 } from '@/components/dashboard/DashboardShell'
 
 import { useDashboardSession } from '@/components/dashboard/useDashboardSession'
-
 import { useTabState } from '@/components/dashboard/useTabState'
-
 import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
-
 import { useAnnouncementsUnread } from '@/components/dashboard/useAnnouncementsUnread'
-
 import TakeAttendance from '@/components/dashboard/TakeAttendance'
-
 import ReadOnlyTimetable from '@/components/dashboard/ReadOnlyTimetable'
-
 import LiveClasses from '@/components/dashboard/LiveClasses'
-
 import CourseMaterials from '@/components/dashboard/CourseMaterials'
-
 import Assignments from '@/components/dashboard/Assignments'
-
 import Gradebook from '@/components/dashboard/Gradebook'
-
 import Analytics from '@/components/dashboard/Analytics'
-
 import Announcements from '@/components/dashboard/Announcements'
-
 import Community from '@/components/dashboard/Community'
-
 import QuestionBank from '@/components/dashboard/QuestionBank'
-
 import SettingsView from '@/app/dashboard/settings/page'
-
 import Support from '@/components/dashboard/Support'
-
 import {
   getStudents,
   type StoredStudent,
 } from '@/lib/studentsStore'
-
 import {
   getCourses,
   categoryForTrack,
   getCoursesForTutor,
 } from '@/lib/coursesStore'
-
 import {
   getAssignments,
   getSubmissions,
 } from '@/lib/assignmentsStore'
-
 import { getToken } from '@/lib/auth'
-
 import { isDemoToken } from '@/lib/demoAccounts'
-
 import { dsaApi } from '@/lib/api'
 
 function isLive(): boolean {
