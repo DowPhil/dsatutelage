@@ -45,14 +45,44 @@ export function getUser(): User | null {
   }
 }
 
+/** Fired on `window` whenever the cached user changes. */
+export const USER_UPDATED_EVENT = 'dsa:user-updated'
+
 /**
  * Update the cached user (e.g. after editing the profile in Settings or after
- * a fresh GET /auth/me), so the rest of the app reflects the new name/avatar
- * without a re-login.
+ * a fresh GET /auth/me), so the rest of the app reflects the new name/avatar —
+ * and a newly paid plan — without a re-login. Listeners are told only when
+ * something actually changed.
  */
 export function setUser(user: User): void {
   if (!isBrowser()) return
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  const raw = JSON.stringify(user)
+  if (localStorage.getItem(USER_KEY) === raw) return
+  localStorage.setItem(USER_KEY, raw)
+  window.dispatchEvent(new Event(USER_UPDATED_EVENT))
+}
+
+/**
+ * The cached user as stored (a string, so it compares by value). Paired with
+ * `subscribeUser` for React's useSyncExternalStore.
+ */
+export function getUserSnapshot(): string | null {
+  if (!isBrowser()) return null
+  return localStorage.getItem(USER_KEY)
+}
+
+/** Call `onChange` whenever the cached user changes (this tab or another). */
+export function subscribeUser(onChange: () => void): () => void {
+  if (!isBrowser()) return () => {}
+  const onStorage = (e: StorageEvent) => {
+    if (e.key === null || e.key === USER_KEY) onChange()
+  }
+  window.addEventListener(USER_UPDATED_EVENT, onChange)
+  window.addEventListener('storage', onStorage)
+  return () => {
+    window.removeEventListener(USER_UPDATED_EVENT, onChange)
+    window.removeEventListener('storage', onStorage)
+  }
 }
 
 export function isAuthenticated(): boolean {

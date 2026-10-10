@@ -7,6 +7,7 @@
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next build --webpack",
     "start": "next start",
     "lint": "next lint",
+    "test": "node --test --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/*.test.mjs",
     "postbuild": "node scripts/downlevel-chunks.js"
   },
   "dependencies": {

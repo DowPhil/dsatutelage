@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { dsaApi } from '@/lib/api'
 import {
@@ -13,6 +13,43 @@ import {
 import { isDemoToken } from '@/lib/demoAccounts'
 import { useSecureSession } from '@/components/dashboard/useSecureSession'
 import type { User, UserRole } from '@/lib/types'
+
+/**
+ * Re-read the signed-in profile (/auth/me) once a minute and whenever the tab
+ * comes back into focus, and hand it to `onProfile`. Picks up changes made
+ * elsewhere while the user is signed in — a new staff role, or a payment the
+ * admin just confirmed. Only real sessions have anything to re-read.
+ */
+export function useProfileRefresh(onProfile: (profile: User) => void): void {
+  const latest = useRef(onProfile)
+  useEffect(() => {
+    latest.current = onProfile
+  })
+
+  useEffect(() => {
+    const token = getToken()
+    if (!token || isDemoToken(token)) return
+    let stale = false
+    const refresh = async () => {
+      try {
+        const profile = await dsaApi.auth.getProfile(token)
+        if (stale || !profile) return
+        latest.current(profile)
+      } catch {
+        /* a blip; the next check will catch up */
+      }
+    }
+    const id = setInterval(() => {
+      if (!document.hidden) refresh()
+    }, 60000)
+    window.addEventListener('focus', refresh)
+    return () => {
+      stale = true
+      clearInterval(id)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [])
+}
 
 interface SessionState {
   user: User | null
@@ -81,34 +118,13 @@ export function useDashboardSession(requiredRole: UserRole): SessionState {
   }, [requiredRole, router])
 
   // A staff member's permissions come from their role, and an admin can change
-  // the role while they are signed in. Re-read the profile once a minute and
-  // whenever the tab comes back into focus, so a newly granted screen appears
-  // without signing out and in. Only real sessions have anything to re-read.
-  useEffect(() => {
-    const token = getToken()
-    if (!token || isDemoToken(token)) return
-    let stale = false
-    const refresh = async () => {
-      try {
-        const profile = await dsaApi.auth.getProfile(token)
-        if (stale || !profile) return
-        setUser((prev) =>
-          JSON.stringify(prev) === JSON.stringify(profile) ? prev : profile,
-        )
-      } catch {
-        /* a blip; the next check will catch up */
-      }
-    }
-    const id = setInterval(() => {
-      if (!document.hidden) refresh()
-    }, 60000)
-    window.addEventListener('focus', refresh)
-    return () => {
-      stale = true
-      clearInterval(id)
-      window.removeEventListener('focus', refresh)
-    }
-  }, [])
+  // the role while they are signed in; re-reading the profile makes a newly
+  // granted screen appear without signing out and in.
+  useProfileRefresh((profile) =>
+    setUser((prev) =>
+      JSON.stringify(prev) === JSON.stringify(profile) ? prev : profile,
+    ),
+  )
 
   // Auto-logout after 30 minutes of inactivity (applies to every dashboard that
   // uses this hook — tutor, guardian, staff).

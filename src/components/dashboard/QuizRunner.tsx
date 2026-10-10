@@ -37,6 +37,7 @@ import QuizLeaderboard, {
 import { ScientificCalculator } from '@/app/rapid-quiz/components/Calculator'
 import { dsaApi } from '@/lib/api'
 import { getToken, getUser } from '@/lib/auth'
+import { useCachedUser } from '@/lib/useCachedUser'
 import { capFor } from '@/lib/access'
 import { CapReachedCard } from '@/components/dashboard/LockedNotice'
 import { resolveStudentProfile } from '@/lib/studentProfile'
@@ -124,6 +125,7 @@ function isOffline(err?: unknown): boolean {
 
 export default function QuizRunner() {
   const token = getToken() ?? undefined
+  const cachedUser = useCachedUser()
   const [view, setView] = useState<'list' | 'take' | 'result' | 'history'>('list')
   const [quizzes, setQuizzes] = useState<Record<string, unknown>[]>([])
   const [myResults, setMyResults] = useState<Record<string, unknown>[]>([])
@@ -1210,7 +1212,7 @@ export default function QuizRunner() {
         </p>
       ) : (
         <>
-          {quizzes.slice(0, capFor('tests', getUser())).map((q) => {
+          {quizzes.slice(0, capFor('tests', cachedUser)).map((q) => {
           const subjects = Array.isArray(q.subjects) ? q.subjects : []
           const qCount = subjects.reduce(
             (n: number, s: Record<string, unknown>) =>
@@ -1267,8 +1269,8 @@ export default function QuizRunner() {
             </Card>
           )
           })}
-          {quizzes.length > capFor('tests', getUser()) && (
-            <CapReachedCard what='free tests' cap={capFor('tests', getUser())} />
+          {quizzes.length > capFor('tests', cachedUser) && (
+            <CapReachedCard what='free tests' cap={capFor('tests', cachedUser)} />
           )}
         </>
       )}

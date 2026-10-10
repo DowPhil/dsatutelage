@@ -31,6 +31,7 @@ import {
   categoryLabel,
 } from '@/lib/coursesStore'
 import { getUser, getToken } from '@/lib/auth'
+import { useCachedUser } from '@/lib/useCachedUser'
 import { capFor } from '@/lib/access'
 import { CapReachedCard } from '@/components/dashboard/LockedNotice'
 import { isDemoToken } from '@/lib/demoAccounts'
@@ -494,6 +495,7 @@ function StudentMaterials({
   track: string
   studentKey: string
 }) {
+  const cachedUser = useCachedUser()
   const [live, setLive] = useState(false)
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState<MatGroup[]>([])
@@ -604,7 +606,7 @@ function StudentMaterials({
   // Free/portal students see a capped number of materials (unlimited for
   // tutorial students, and while the paywall is off). Spend the budget across
   // courses in order.
-  const matCap = capFor('materials', getUser())
+  const matCap = capFor('materials', cachedUser)
   let matBudget = matCap
   const cappedGroups = groups.map((g) => {
     if (matBudget === Infinity) return g

@@ -530,7 +530,9 @@ import {
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { dsaApi, type PaymentStatus } from '@/lib/api'
-import { getToken, getUser } from '@/lib/auth'
+import { getToken, setUser as cacheUser } from '@/lib/auth'
+import { useCachedUser } from '@/lib/useCachedUser'
+import { isDemoToken } from '@/lib/demoAccounts'
 import { uploadToCloudinary } from '@/lib/cloudinary'
 import { accessLevel, LEVEL_LABEL } from '@/lib/access'
 import { BANK, HELPLINE, HELPLINE_INTL, VERIFY_WINDOW_TEXT } from '@/lib/bank'
@@ -562,7 +564,7 @@ function normalizePlan(raw: Record<string, unknown>): Plan {
 
 export default function UnlockPlans() {
   const token = getToken() ?? undefined
-  const level = accessLevel(getUser())
+  const level = accessLevel(useCachedUser())
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Plan | null>(null)
@@ -592,6 +594,15 @@ export default function UnlockPlans() {
       setStatus(await dsaApi.payments.mine(token))
     } catch {
       /* the page still works without it */
+    }
+    // The level badge and the dashboard's gates read the cached profile;
+    // re-read it so a confirmed (or just-submitted) payment shows at once.
+    if (!token || isDemoToken(token)) return
+    try {
+      const profile = await dsaApi.auth.getProfile(token)
+      if (profile) cacheUser(profile)
+    } catch {
+      /* the dashboard's periodic refresh will catch up */
     }
   }, [token])
 

@@ -32,7 +32,13 @@ import {
 
 // API Utility
 import { dsaApi } from '@/lib/api'
-import { getToken, getUser, clearSession } from '@/lib/auth'
+import {
+  getToken,
+  getUser,
+  clearSession,
+  setUser as cacheUser,
+} from '@/lib/auth'
+import { useCachedUser } from '@/lib/useCachedUser'
 import { isDemoToken } from '@/lib/demoAccounts'
 import {
   resolveStudentProfile,
@@ -65,6 +71,7 @@ import OverviewUI from './OverviewUI'
 import ResourcesView from './resources/page'
 import CommunityView from './community/page'
 import { useSecureSession } from '@/components/dashboard/useSecureSession'
+import { useProfileRefresh } from '@/components/dashboard/useDashboardSession'
 import StudentAttendance from '@/components/dashboard/StudentAttendance'
 import Timetable from '@/components/dashboard/Timetable'
 import Assignments from '@/components/dashboard/Assignments'
@@ -157,6 +164,11 @@ export default function AcademyDashboard() {
 
   useSecureSession({ onIdleTimeout: handleLogout, idleMinutes: 30 })
 
+  // Access gates read the cached user. Keep it in step with /auth/me so a plan
+  // the admin confirms (or a payment that lands) unlocks without signing out.
+  const cachedUser = useCachedUser()
+  useProfileRefresh(cacheUser)
+
   useEffect(() => {
     setMounted(true)
 
@@ -179,6 +191,7 @@ export default function AcademyDashboard() {
         }
 
         recordLogin()
+        if (!isDemoToken(token)) cacheUser(profile)
 
         setUser({
           name: profile.fullName || profile.username || 'Student',
@@ -514,7 +527,7 @@ export default function AcademyDashboard() {
               <ResourcesView isDSAite={user.isDSAite} />
             )}
             {activeView === 'assignments' &&
-              (canAccess('assignments', getUser()) ? (
+              (canAccess('assignments', cachedUser) ? (
                 <Assignments mode='student' />
               ) : (
                 <LockedNotice feature='Assignments' need='tutorial' />
@@ -525,7 +538,7 @@ export default function AcademyDashboard() {
             {activeView === 'analytics' && <Analytics mode='student' />}
             {activeView === 'syllabus' && <SyllabusMastery />}
             {activeView === 'community' &&
-              (canAccess('community', getUser()) ? (
+              (canAccess('community', cachedUser) ? (
                 <CommunityView />
               ) : (
                 <LockedNotice feature='Community' need='portal' />
