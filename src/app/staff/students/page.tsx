@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   Search,
@@ -25,6 +25,7 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
+  Download,
 } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
@@ -32,7 +33,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 
 import { dsaApi } from '@/lib/api'
+import { adminApi } from '@/lib/admin-api'
 import { getToken } from '@/lib/auth'
+import { categoryLabel } from '@/lib/coursesStore'
+import { staffRosterParams } from '@/lib/studentRoster'
+import type { CourseCategory } from '@/lib/types'
 
 // -----------------------------------------------------------------------------
 // Types
@@ -157,6 +162,21 @@ const normalizeStudent = (
 // Main page
 // -----------------------------------------------------------------------------
 
+const EXAM_TRACK_OPTIONS = [
+  'jamb',
+  'waec',
+  'postutme',
+  'undergrad',
+  'preclinical',
+  'afterschool',
+]
+const LEARNING_MODE_OPTIONS = ['online', 'physical']
+const DEPARTMENT_OPTIONS = [
+  { value: 'science', label: 'Science' },
+  { value: 'art', label: 'Art' },
+  { value: 'commercial', label: 'Commercial' },
+]
+
 export default function StaffStudentsPage() {
   const [students, setStudents] =
     useState<Student[]>([])
@@ -179,6 +199,25 @@ export default function StaffStudentsPage() {
   const [statusFilter, setStatusFilter] =
     useState('all')
 
+  const [departmentFilter, setDepartmentFilter] =
+    useState('all')
+
+  const [courseFilter, setCourseFilter] =
+    useState('all')
+
+  const [courseOptions, setCourseOptions] =
+    useState<{ id: string; label: string }[]>([])
+
+  // Export needs students.manage (checked again by the server).
+  const [canExport, setCanExport] =
+    useState(false)
+
+  const [exporting, setExporting] =
+    useState(false)
+
+  const [exportMessage, setExportMessage] =
+    useState<{ ok: boolean; text: string } | null>(null)
+
   const [expandedStudent, setExpandedStudent] =
     useState<string | null>(null)
 
@@ -198,6 +237,16 @@ export default function StaffStudentsPage() {
   // Load students
   // ---------------------------------------------------------------------------
 
+  const rosterParams = staffRosterParams({
+    search,
+    track: trackFilter,
+    mode: modeFilter,
+    status: statusFilter,
+    department: departmentFilter,
+    courseId: courseFilter,
+  })
+  const rosterKey = JSON.stringify(rosterParams)
+
   const loadStudents = async () => {
     setLoading(true)
     setError('')
@@ -206,8 +255,11 @@ export default function StaffStudentsPage() {
       const token =
         getToken() ?? undefined
 
+      // Every page of the students matching the filters — filtered on the
+      // server, so nothing past the first page is missed.
       const rows = (await dsaApi.staff.students(
         token,
+        JSON.parse(rosterKey) as Record<string, string>,
       )) as Record<string, unknown>[]
 
       setStudents(
@@ -233,90 +285,96 @@ export default function StaffStudentsPage() {
     }
   }
 
+  // Reload when a filter changes; typing in the search box waits for a pause.
   useEffect(() => {
-    loadStudents()
+    const timer = setTimeout(() => {
+      void loadStudents()
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rosterKey])
+
+  // Courses for the course filter (labelled with their class, so After-School
+  // SS1 and SS2 are told apart), and whether this staff member may export.
+  useEffect(() => {
+    const token = getToken() ?? undefined
+    dsaApi.courses
+      .list({}, token)
+      .then((rows) => {
+        setCourseOptions(
+          (rows as Record<string, unknown>[])
+            .filter((c) => !c.isGeneral)
+            .map((c) => ({
+              id: sstr(c.id ?? c._id),
+              label: `${sstr(c.title)} — ${categoryLabel(sstr(c.category) as CourseCategory)}${c.classLevel ? ` ${sstr(c.classLevel)}` : ''}`,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        )
+      })
+      .catch(() => {
+        /* no course filter without course access */
+      })
+    dsaApi.auth
+      .getProfile(token)
+      .then((me) => {
+        const profile = (me ?? {}) as { permissions?: string[]; role?: string }
+        setCanExport(
+          profile.role === 'admin' ||
+            (profile.permissions ?? []).includes('students.manage'),
+        )
+      })
+      .catch(() => setCanExport(false))
   }, [])
+
+  // Download every student matching the current filters as .xlsx.
+  const exportToExcel = async () => {
+    setExporting(true)
+    setExportMessage(null)
+    try {
+      const { blob, filename, count, scope } = await adminApi.exportStudents(
+        rosterParams,
+        getToken() ?? undefined,
+      )
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setExportMessage({
+        ok: true,
+        text: `${count} student${count === 1 ? '' : 's'} exported to ${filename} — ${
+          scope === 'all'
+            ? 'every student you can see (no filters applied).'
+            : 'only the students matching your current filters and search.'
+        }`,
+      })
+    } catch (err) {
+      setExportMessage({
+        ok: false,
+        text:
+          err instanceof Error
+            ? err.message
+            : 'The export could not be created.',
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Filters
   // ---------------------------------------------------------------------------
 
-  const tracks = useMemo(() => {
-    return Array.from(
-      new Set(
-        students
-          .map(
-            (student) => student.track,
-          )
-          .filter(Boolean),
-      ),
-    ).sort()
-  }, [students])
+  // Filter choices are fixed lists (not built from the loaded page), so every
+  // option stays available whatever the current results are.
+  const tracks = EXAM_TRACK_OPTIONS
+  const modes = LEARNING_MODE_OPTIONS
 
-  const modes = useMemo(() => {
-    return Array.from(
-      new Set(
-        students
-          .map(
-            (student) => student.mode,
-          )
-          .filter(Boolean),
-      ),
-    ).sort()
-  }, [students])
-
-  const filteredStudents = useMemo(() => {
-    const query =
-      search.trim().toLowerCase()
-
-    return students.filter((student) => {
-      const matchesSearch =
-        !query ||
-        student.name
-          .toLowerCase()
-          .includes(query) ||
-        student.email
-          .toLowerCase()
-          .includes(query) ||
-        student.studentId
-          .toLowerCase()
-          .includes(query) ||
-        student.department
-          .toLowerCase()
-          .includes(query) ||
-        student.programme.some(
-          (programme) =>
-            programme
-              .toLowerCase()
-              .includes(query),
-        )
-
-      const matchesTrack =
-        trackFilter === 'all' ||
-        student.track === trackFilter
-
-      const matchesMode =
-        modeFilter === 'all' ||
-        student.mode === modeFilter
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        student.status === statusFilter
-
-      return (
-        matchesSearch &&
-        matchesTrack &&
-        matchesMode &&
-        matchesStatus
-      )
-    })
-  }, [
-    students,
-    search,
-    trackFilter,
-    modeFilter,
-    statusFilter,
-  ])
+  // The server applies every filter across the whole roster (all pages).
+  const filteredStudents = students
 
   // ---------------------------------------------------------------------------
   // Statistics
@@ -523,13 +581,11 @@ export default function StaffStudentsPage() {
     setTrackFilter('all')
     setModeFilter('all')
     setStatusFilter('all')
+    setDepartmentFilter('all')
+    setCourseFilter('all')
   }
 
-  const hasFilters =
-    Boolean(search) ||
-    trackFilter !== 'all' ||
-    modeFilter !== 'all' ||
-    statusFilter !== 'all'
+  const hasFilters = Object.keys(rosterParams).length > 0
 
   // ---------------------------------------------------------------------------
   // Render
@@ -651,7 +707,7 @@ export default function StaffStudentsPage() {
                     event.target.value,
                   )
                 }
-                placeholder="Search by name, email, ID, department or programme..."
+                placeholder="Search by name, email, student ID or phone..."
                 className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-[#002EFF]/40 focus:bg-white focus:ring-4 focus:ring-[#002EFF]/5"
               />
             </div>
@@ -731,6 +787,46 @@ export default function StaffStudentsPage() {
               </option>
             </select>
 
+            {/* Department */}
+            <select
+              value={departmentFilter}
+              onChange={(event) =>
+                setDepartmentFilter(event.target.value)
+              }
+              aria-label="Department"
+              className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#002EFF]/40 focus:bg-white focus:ring-4 focus:ring-[#002EFF]/5 lg:w-44"
+            >
+              <option value="all">
+                All Departments
+              </option>
+              {DEPARTMENT_OPTIONS.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+
+            {/* Course */}
+            {courseOptions.length > 0 && (
+              <select
+                value={courseFilter}
+                onChange={(event) =>
+                  setCourseFilter(event.target.value)
+                }
+                aria-label="Course"
+                className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#002EFF]/40 focus:bg-white focus:ring-4 focus:ring-[#002EFF]/5 lg:w-56"
+              >
+                <option value="all">
+                  All Courses
+                </option>
+                {courseOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            )}
+
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
@@ -739,11 +835,29 @@ export default function StaffStudentsPage() {
               <Search size={14} />
 
               <span>
-                {filteredStudents.length}{' '}
-                of {students.length}{' '}
-                students
+                {hasFilters
+                  ? `${filteredStudents.length} student${filteredStudents.length === 1 ? '' : 's'} match your filters`
+                  : `${filteredStudents.length} students`}
               </span>
             </div>
+
+            {canExport && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={exportToExcel}
+                disabled={exporting || loading || filteredStudents.length === 0}
+                className="gap-2 rounded-xl text-xs font-bold"
+              >
+                {exporting ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}
+                {hasFilters ? 'Export filtered to Excel' : 'Export all to Excel'}
+              </Button>
+            )}
 
             {hasFilters && (
               <Button
@@ -759,6 +873,19 @@ export default function StaffStudentsPage() {
             )}
 
           </div>
+
+          {exportMessage && (
+            <p
+              role="status"
+              className={`rounded-xl px-3 py-2 text-xs font-semibold ${
+                exportMessage.ok
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'bg-red-50 text-red-700'
+              }`}
+            >
+              {exportMessage.text}
+            </p>
+          )}
         </div>
       </Card>
 
@@ -858,9 +985,9 @@ export default function StaffStudentsPage() {
           </h3>
 
           <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-            {students.length === 0
-              ? 'There are currently no students available for your account.'
-              : 'No students match your current search or filter settings.'}
+            {hasFilters
+              ? 'No students match your current search or filter settings.'
+              : 'There are currently no students available for your account.'}
           </p>
 
           {hasFilters && (

@@ -30,9 +30,57 @@ export function cloudinaryConfigured(): boolean {
 
 export interface CloudinaryResult {
   url: string // secure_url — the hosted file/image URL
+  publicId?: string // public_id — identifies the asset in Cloudinary
   resourceType: string // "image" | "video" | "raw"
   format?: string
   bytes?: number
+}
+
+interface CloudinaryUploadResponse {
+  secure_url?: unknown
+  public_id?: unknown
+  resource_type?: unknown
+  format?: unknown
+  bytes?: unknown
+  error?: { message?: string }
+}
+
+/**
+ * Turn Cloudinary's upload response into a result, or throw a message the
+ * uploader can act on. Only an https `secure_url` counts as success: a 200 with
+ * no usable URL is a failed upload, not an empty link to save.
+ */
+export function parseCloudinaryUpload(
+  status: number,
+  ok: boolean,
+  data: CloudinaryUploadResponse | null,
+): CloudinaryResult {
+  if (!ok) {
+    throw new Error(
+      data?.error?.message ||
+        `Upload failed (HTTP ${status}). Please try again or paste a link.`,
+    )
+  }
+  const url = typeof data?.secure_url === 'string' ? data.secure_url : ''
+  let valid = false
+  try {
+    valid = new URL(url).protocol === 'https:'
+  } catch {
+    valid = false
+  }
+  if (!valid) {
+    throw new Error(
+      'The upload finished but Cloudinary did not return a file link. Please try again.',
+    )
+  }
+  return {
+    url,
+    publicId: typeof data?.public_id === 'string' ? data.public_id : undefined,
+    resourceType:
+      typeof data?.resource_type === 'string' ? data.resource_type : 'raw',
+    format: typeof data?.format === 'string' ? data.format : undefined,
+    bytes: typeof data?.bytes === 'number' ? data.bytes : undefined,
+  }
 }
 
 /**
@@ -67,27 +115,9 @@ export async function uploadToCloudinary(
     throw new Error('Could not reach Cloudinary. Check your connection and try again.')
   }
 
-  const data = (await res.json().catch(() => null)) as
-    | {
-        secure_url?: string
-        resource_type?: string
-        format?: string
-        bytes?: number
-        error?: { message?: string }
-      }
-    | null
+  const data = (await res
+    .json()
+    .catch(() => null)) as CloudinaryUploadResponse | null
 
-  if (!res.ok || !data?.secure_url) {
-    throw new Error(
-      data?.error?.message ||
-        `Upload failed (HTTP ${res.status}). Please try again or paste a link.`,
-    )
-  }
-
-  return {
-    url: data.secure_url,
-    resourceType: data.resource_type || 'raw',
-    format: data.format,
-    bytes: data.bytes,
-  }
+  return parseCloudinaryUpload(res.status, res.ok, data)
 }

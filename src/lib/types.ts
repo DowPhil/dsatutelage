@@ -51,6 +51,8 @@ export interface User {
   tutorialExpiry?: string
   paymentStatus?: 'none' | 'pending-offline' | 'active' | 'expired' | 'disabled'
   accessEnabled?: boolean
+  /** The student's plan as the server sees it (GET /auth/me; students only). */
+  subscription?: StudentSubscription
   // Study mode. `isDsaStudent` (a physical/on-campus DSA student) is what the
   // signup form submits; `studyMode` is the resolved 'physical' | 'online'.
   isDsaStudent?: boolean
@@ -155,6 +157,8 @@ export interface CourseMaterial {
   title: string
   type: MaterialType
   url: string
+  /** The class it is for, e.g. "SS1" (After-School); '' ⇒ every class. */
+  classLevel?: string
   description?: string
   isDownloadable: boolean
   durationLabel?: string // e.g. "12:40" for video/recording
@@ -295,4 +299,21 @@ export interface ApiError {
   message?: string
   error?: string
   statusCode?: number
+}
+
+/**
+ * A student's current plan, worked out by the server from the same fields it
+ * authorises with (dsa_backend utils/subscription.js).
+ */
+export interface StudentSubscription {
+  status: 'free' | 'active' | 'pending' | 'expired' | 'disabled'
+  label: string
+  /** What the server lets the student use now (provisional while pending). */
+  effectiveLevel: 'free' | 'portal' | 'tutorial'
+  planName: string
+  expiresAt: string | null
+  /** Portal access, or a tutorial plan with no end date. */
+  noExpiry: boolean
+  pendingPlanName?: string
+  pendingSince?: string
 }

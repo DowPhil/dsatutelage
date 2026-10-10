@@ -534,7 +534,7 @@ import { getToken, setUser as cacheUser } from '@/lib/auth'
 import { useCachedUser } from '@/lib/useCachedUser'
 import { isDemoToken } from '@/lib/demoAccounts'
 import { uploadToCloudinary } from '@/lib/cloudinary'
-import { accessLevel, LEVEL_LABEL } from '@/lib/access'
+import { planSummary } from '@/lib/subscription'
 import { BANK, HELPLINE, HELPLINE_INTL, VERIFY_WINDOW_TEXT } from '@/lib/bank'
 
 const str = (v: unknown) => (v == null ? '' : String(v))
@@ -564,7 +564,8 @@ function normalizePlan(raw: Record<string, unknown>): Plan {
 
 export default function UnlockPlans() {
   const token = getToken() ?? undefined
-  const level = accessLevel(useCachedUser())
+  // The plan as the server reports it (refreshed below and by the dashboard).
+  const plan = planSummary(useCachedUser())
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Plan | null>(null)
@@ -832,8 +833,17 @@ export default function UnlockPlans() {
             Choose a plan to upgrade plan of the portal
           </p>
         </div>
-        <span className='flex items-center gap-1.5 text-[10px] font-black uppercase px-3 py-1.5 rounded-full bg-blue-50 text-[#002EFF]'>
-          <ShieldCheck size={12} /> {LEVEL_LABEL[level]}
+        <span
+          title={plan.detail}
+          className={`flex items-center gap-1.5 text-[10px] font-black uppercase px-3 py-1.5 rounded-full ${
+            plan.status === 'pending'
+              ? 'bg-amber-50 text-amber-700'
+              : plan.status === 'expired' || plan.status === 'disabled'
+                ? 'bg-rose-50 text-rose-700'
+                : 'bg-blue-50 text-[#002EFF]'
+          }`}
+        >
+          <ShieldCheck size={12} /> {plan.title}
         </span>
       </div>
 

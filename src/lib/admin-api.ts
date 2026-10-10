@@ -113,6 +113,10 @@ export interface GetUsersParams {
   planId?: string
   /** verified = has a verified payment record; unpaid = has none. */
   paid?: 'verified' | 'unpaid' | string
+  /** Students a course is for (same rule as their own course list). */
+  courseId?: string
+  /** online | physical */
+  learningMode?: string
 }
 
 /** A verified payment (completed online / approved offline). */
@@ -304,6 +308,8 @@ export interface Course {
   isPublished?: boolean
   /** The category's General course (materials with no specific subject). */
   isGeneral?: boolean
+  /** The one class this course is for (e.g. "SS2"); '' ⇒ every class. */
+  classLevel?: string
   progressPercent?: number
   createdAt?: string | number
   updatedAt?: string | number
@@ -351,6 +357,11 @@ export interface CourseMaterial {
   title: string
   type: 'pdf' | 'video' | 'link' | string
   url: string
+  /** The class it is for, e.g. "SS1" (After-School); '' ⇒ every class. */
+  classLevel?: string
+  publicId?: string
+  resourceType?: string
+  format?: string
   description?: string
   orderIndex?: number
   isDownloadable?: boolean
@@ -371,6 +382,12 @@ export interface CreateMaterialPayload {
   title: string
   type: 'pdf' | 'video' | 'link' | string
   url: string
+  /** Required for After-School courses: "SS1" or "SS2". */
+  classLevel?: string
+  /** From the Cloudinary upload response. */
+  publicId?: string
+  resourceType?: string
+  format?: string
   description?: string
   orderIndex?: number
   isDownloadable?: boolean
@@ -381,6 +398,8 @@ export interface CreateMaterialPayload {
 export interface MaterialResponse {
   success: boolean
   message?: string
+  /** True when the same file was already saved for this course and class. */
+  duplicate?: boolean
   data: CourseMaterial
 }
 
@@ -576,7 +595,15 @@ export const adminApi = {
    */
   exportStudents: async (
     params: Omit<GetUsersParams, 'role' | 'page' | 'limit'>,
-  ): Promise<{ blob: Blob; filename: string; count: number }> => {
+    /** The secretary (staff) dashboard passes its own session token. */
+    authToken?: string,
+  ): Promise<{
+    blob: Blob
+    filename: string
+    count: number
+    /** 'filtered' when any filter narrowed the list, else 'all'. */
+    scope: 'filtered' | 'all'
+  }> => {
     const queryParams = new URLSearchParams()
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && value !== '')
@@ -584,6 +611,7 @@ export const adminApi = {
     })
     const session = getAdminSession()
     const token =
+      authToken ||
       session?.token ||
       (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
     const qs = queryParams.toString()
@@ -607,6 +635,8 @@ export const adminApi = {
       blob: await response.blob(),
       filename,
       count: Number(response.headers.get('x-export-count')) || 0,
+      scope:
+        response.headers.get('x-export-scope') === 'all' ? 'all' : 'filtered',
     }
   },
 

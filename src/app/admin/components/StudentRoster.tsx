@@ -35,6 +35,8 @@ import {
   type StudentDetailsResponse,
 } from '@/lib/admin-api'
 import ChangeRequestsPanel from './ChangeRequestsPanel'
+import { categoryLabel } from '@/lib/coursesStore'
+import type { CourseCategory } from '@/lib/types'
 import {
   PROGRAMMES,
   CLASS_LEVELS,
@@ -119,12 +121,54 @@ export default function StudentRoster() {
   const [planFilter, setPlanFilter] = useState('')
   const [paidFilter, setPaidFilter] = useState('')
   const [plans, setPlans] = useState<{ id: string; name: string; active?: boolean }[]>([])
+  // Course: the students that course is for (class, track, department —
+  // decided on the server, across every page).
+  const [courseFilter, setCourseFilter] = useState('')
+  const [courseOptions, setCourseOptions] = useState<{ id: string; label: string }[]>([])
   const [exporting, setExporting] = useState(false)
   const extraFilters = {
     department: departmentFilter,
     planId: planFilter,
     paid: paidFilter,
+    courseId: courseFilter,
   }
+  const anyFilter = !!(
+    searchQuery ||
+    programmeFilter ||
+    classFilter ||
+    accessFilter ||
+    statusFilter ||
+    departmentFilter ||
+    planFilter ||
+    paidFilter ||
+    courseFilter
+  )
+
+  // Courses for the course filter, labelled with their class so After-School
+  // SS1 and SS2 courses are told apart.
+  useEffect(() => {
+    let cancelled = false
+    adminApi
+      .getCourses()
+      .then((res) => {
+        if (cancelled || !res?.data) return
+        setCourseOptions(
+          res.data
+            .filter((c) => !c.isGeneral)
+            .map((c) => ({
+              id: c.id,
+              label: `${c.title} — ${categoryLabel(c.category as CourseCategory)}${c.classLevel ? ` ${c.classLevel}` : ''}`,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        )
+      })
+      .catch(() => {
+        /* staff without course access just don't get the course filter */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Plans for the "plan paid for" filter. Staff without plan access simply
   // don't get the plan dropdown.
@@ -201,7 +245,12 @@ export default function StudentRoster() {
       cls = '',
       access = '',
       status = '',
-      extra: { department?: string; planId?: string; paid?: string } = {},
+      extra: {
+        department?: string
+        planId?: string
+        paid?: string
+        courseId?: string
+      } = {},
     ) => {
     setLoading(true)
     try {
@@ -215,6 +264,7 @@ export default function StudentRoster() {
         department: extra.department || undefined,
         planId: extra.planId || undefined,
         paid: extra.paid || undefined,
+        courseId: extra.courseId || undefined,
         page,
         limit,
       })
@@ -275,13 +325,28 @@ export default function StudentRoster() {
     fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, extraFilters)
     // Re-fetch on page change or when a filter changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchStudents, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, departmentFilter, planFilter, paidFilter])
+  }, [fetchStudents, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, departmentFilter, planFilter, paidFilter, courseFilter])
+
+  const clearFilters = () => {
+    setSearchQuery('')
+    setProgrammeFilter('')
+    setClassFilter('')
+    setAccessFilter('')
+    setStatusFilter('')
+    setDepartmentFilter('')
+    setPlanFilter('')
+    setPaidFilter('')
+    setCourseFilter('')
+    setCurrentPage(1)
+    // The search box only applies on submit; re-run with it cleared.
+    fetchStudents('', 1)
+  }
 
   // Download every student matching the current filters (all pages) as .xlsx.
   const exportStudents = async () => {
     setExporting(true)
     try {
-      const { blob, filename, count } = await adminApi.exportStudents({
+      const { blob, filename, count, scope } = await adminApi.exportStudents({
         search: searchQuery || undefined,
         programme: programmeFilter || undefined,
         class: classFilter || undefined,
@@ -290,6 +355,7 @@ export default function StudentRoster() {
         department: departmentFilter || undefined,
         planId: planFilter || undefined,
         paid: paidFilter || undefined,
+        courseId: courseFilter || undefined,
       })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -301,7 +367,11 @@ export default function StudentRoster() {
       URL.revokeObjectURL(url)
       showAlert(
         'Export Ready',
-        `${count || 'All matching'} student${count === 1 ? '' : 's'} exported to ${filename}.`,
+        `${count || 'All matching'} student${count === 1 ? '' : 's'} exported to ${filename} — ${
+          scope === 'all'
+            ? 'the whole roster (no filters applied).'
+            : 'only the students matching your current filters and search, across every page.'
+        }`,
       )
     } catch (err) {
       showAlert(
@@ -529,7 +599,7 @@ export default function StudentRoster() {
           />
           <input
             type='text'
-            placeholder='Name, email or student ID'
+            placeholder='Name, email, student ID or phone'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className='w-full h-10 pl-9 pr-4 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-[#002EFF] transition-all'
@@ -629,6 +699,25 @@ export default function StudentRoster() {
           <option value='art'>Art</option>
           <option value='commercial'>Commercial</option>
         </select>
+        {courseOptions.length > 0 && (
+          <select
+            value={courseFilter}
+            onChange={(e) => {
+              setCourseFilter(e.target.value)
+              setCurrentPage(1)
+            }}
+            aria-label='Course'
+            title='Students this course is for — by class, programme and department'
+            className='h-9 max-w-[14rem] px-2 bg-white border border-slate-200 rounded-lg text-[11px] font-black text-slate-700 outline-none focus:border-[#002EFF]'
+          >
+            <option value=''>All courses</option>
+            {courseOptions.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           value={paidFilter}
           onChange={(e) => {
@@ -685,25 +774,10 @@ export default function StudentRoster() {
             </button>
           </>
         )}
-        {(programmeFilter ||
-          classFilter ||
-          accessFilter ||
-          statusFilter ||
-          departmentFilter ||
-          planFilter ||
-          paidFilter) && (
+        {anyFilter && (
           <button
             type='button'
-            onClick={() => {
-              setProgrammeFilter('')
-              setClassFilter('')
-              setAccessFilter('')
-              setStatusFilter('')
-              setDepartmentFilter('')
-              setPlanFilter('')
-              setPaidFilter('')
-              setCurrentPage(1)
-            }}
+            onClick={clearFilters}
             className='h-9 px-3 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-black uppercase hover:text-[#002EFF]'
           >
             Clear
@@ -723,7 +797,20 @@ export default function StudentRoster() {
         </div>
       ) : students.length === 0 ? (
         <div className='bg-white rounded-2xl border border-slate-100 p-10 text-center'>
-          <p className='text-xs font-bold text-slate-400'>No students found.</p>
+          <p className='text-xs font-bold text-slate-400'>
+            {anyFilter
+              ? 'No students match these filters.'
+              : 'No students found.'}
+          </p>
+          {anyFilter && (
+            <button
+              type='button'
+              onClick={clearFilters}
+              className='mt-3 h-9 px-3 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-black uppercase hover:text-[#002EFF]'
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       ) : (
         <>

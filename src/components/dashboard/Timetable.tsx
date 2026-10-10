@@ -11,6 +11,7 @@ import {
   gridFromApi,
   tintForSubject,
   timetableKey,
+  afterschoolLevelFromClass,
   slotsFromApi,
   slotTimeLabel,
   DEFAULT_SLOTS,
@@ -25,10 +26,13 @@ export default function Timetable({
   track,
   mode,
   department,
+  classLevel,
 }: {
   track: ExamTrack
   mode: StudyMode
   department: Department | null
+  /** The student's class (e.g. "SS2") — picks the After-School SS1/SS2 timetable. */
+  classLevel?: string
 }) {
   const isOnline = mode === 'online'
 
@@ -50,7 +54,7 @@ export default function Timetable({
     const t = getToken()
     if (t && !isDemoToken(t)) {
       dsaApi.timetable
-        .get(timetableKey(track, department))
+        .get(timetableKey(track, department, afterschoolLevelFromClass(classLevel)))
         .then((res) => {
           if (cancelled) return
           const apiGrid = (res as { grid?: unknown })?.grid
@@ -76,7 +80,7 @@ export default function Timetable({
     return () => {
       cancelled = true
     }
-  }, [track, department])
+  }, [track, department, classLevel])
 
   return (
     <div className='space-y-6 max-w-6xl mx-auto'>

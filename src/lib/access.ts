@@ -48,6 +48,9 @@ export const DEFAULT_CAPS: AccessCaps = {
 export function accessLevel(user?: Partial<User> | null): AccessLevel {
   if (!user) return 'free'
   if (user.accessEnabled === false) return 'free' // admin disabled → treat as free
+  // Same as the server (computeEffectiveAccessLevel): a disabled payment
+  // status gives no paid access, whatever level is stored.
+  if (user.paymentStatus === 'disabled') return 'free'
   const lvl = user.accessLevel
   if (lvl === 'tutorial') {
     if (user.tutorialExpiry && new Date(user.tutorialExpiry).getTime() < Date.now())

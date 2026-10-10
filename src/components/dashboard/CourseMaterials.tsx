@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
   FileText,
   Video,
@@ -36,7 +36,18 @@ import { capFor } from '@/lib/access'
 import { CapReachedCard } from '@/components/dashboard/LockedNotice'
 import { isDemoToken } from '@/lib/demoAccounts'
 import { dsaApi } from '@/lib/api'
-import { uploadToCloudinary, cloudinaryConfigured } from '@/lib/cloudinary'
+import {
+  uploadToCloudinary,
+  cloudinaryConfigured,
+  type CloudinaryResult,
+} from '@/lib/cloudinary'
+import {
+  buildMaterialPayload,
+  classLevelLabel,
+  classOptionsForCourse,
+  materialDraftError,
+  materialFileError,
+} from '@/lib/materialUpload'
 import { normaliseTrack } from '@/lib/studentProfile'
 import type { CourseMaterial, MaterialType, CourseCategory } from '@/lib/types'
 
@@ -81,6 +92,7 @@ function mapMaterial(m: Record<string, unknown>): CourseMaterial {
       ? (t as MaterialType)
       : 'link',
     url: String(m.url ?? ''),
+    classLevel: m.classLevel ? String(m.classLevel) : undefined,
     description: m.description ? String(m.description) : undefined,
     isDownloadable: !!m.isDownloadable,
     durationLabel: m.durationLabel ? String(m.durationLabel) : undefined,
@@ -143,7 +155,7 @@ function TutorMaterials() {
   const [live, setLive] = useState(false)
   const [loading, setLoading] = useState(true)
   const [courses, setCourses] = useState<
-    { id: string; title: string; category?: string }[]
+    { id: string; title: string; category?: string; classLevel?: string }[]
   >([])
   const [courseId, setCourseId] = useState('')
   const [materials, setMaterials] = useState<CourseMaterial[]>([])
@@ -157,17 +169,35 @@ function TutorMaterials() {
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadNote, setUploadNote] = useState('')
+  // After-School materials are for SS1 or SS2; the pick survives a failed save.
+  const [classLevel, setClassLevel] = useState('')
+  // The Cloudinary response for the file in the form.
+  const [lastUpload, setLastUpload] = useState<CloudinaryResult | null>(null)
+  const saving = useRef(false)
+
+  const course = courses.find((c) => c.id === courseId) ?? null
+  const classOptions = classOptionsForCourse(course)
 
   const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-picking the same file
     if (!file) return
+    const invalid = materialFileError(file)
+    if (invalid) {
+      setUploadNote(invalid)
+      return
+    }
     setUploadNote('')
     setError('')
+    // Drop the previous file's link first, so a failed upload can never leave
+    // an earlier file's URL in the form.
+    setUrl('')
+    setLastUpload(null)
     setUploading(true)
     try {
-      const { url: hosted } = await uploadToCloudinary(file, 'materials')
-      setUrl(hosted)
+      const uploaded = await uploadToCloudinary(file, 'materials')
+      setUrl(uploaded.url)
+      setLastUpload(uploaded)
       if (!title.trim()) setTitle(file.name.replace(/\.[^.]+$/, ''))
       setUploadNote('File uploaded ✓')
     } catch (err) {
@@ -194,13 +224,24 @@ function TutorMaterials() {
             id: String(c.id ?? c._id ?? ''),
             title: String(c.title ?? 'Course'),
             category: c.category ? String(c.category) : undefined,
+            classLevel: c.classLevel ? String(c.classLevel) : undefined,
           }))
           setCourses(mapped)
           setLive(true)
           setCourseId((p) => p || mapped[0]?.id || '')
           return
-        } catch {
-          /* fall through */
+        } catch (err) {
+          // A signed-in tutor must not drop to the offline preview: anything
+          // added there would only be saved in this browser, never uploaded.
+          if (cancelled) return
+          setLive(true)
+          setLoading(false)
+          setError(
+            err instanceof Error
+              ? `Could not load your courses: ${err.message}`
+              : 'Could not load your courses. Check your connection and reload.',
+          )
+          return
         }
       }
       if (cancelled) return
@@ -231,11 +272,15 @@ function TutorMaterials() {
           courseId,
         )) as Record<string, unknown>[]
         setMaterials(rows.map(mapMaterial))
-        setLoading(false)
-        return
-      } catch {
-        /* fall through */
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? `Could not load the materials: ${err.message}`
+            : 'Could not load the materials.',
+        )
       }
+      setLoading(false)
+      return
     }
     setMaterials(getMaterials(courseId))
     setLoading(false)
@@ -247,20 +292,39 @@ function TutorMaterials() {
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault()
+    // One save at a time: a double click must not post the material twice.
+    if (saving.current) return
     setError('')
-    if (title.trim().length < 2) return setError('Enter a title')
-    if (!/^https?:\/\/|^\//.test(url.trim()))
-      return setError('Enter a valid URL (https://…)')
+    const invalid = materialDraftError({ title, url, classLevel }, course, {
+      uploading,
+    })
+    if (invalid) return setError(invalid)
+    saving.current = true
     setBusy(true)
     try {
       if (live) {
-        await dsaApi.courses.addMaterial(courseId, {
-          title: title.trim(),
-          type,
-          url: url.trim(),
-          isDownloadable: downloadable,
-          description: duration.trim() ? `Duration: ${duration.trim()}` : undefined,
-        })
+        const saved = (await dsaApi.courses.addMaterial(
+          courseId,
+          buildMaterialPayload(
+            {
+              title,
+              url,
+              classLevel,
+              type,
+              isDownloadable: downloadable,
+              description: duration.trim()
+                ? `Duration: ${duration.trim()}`
+                : undefined,
+            },
+            course,
+            lastUpload,
+          ),
+        )) as { url?: string; classLevel?: string } | undefined
+        if (!saved?.url) {
+          throw new Error('The server did not confirm the save. Please try again.')
+        }
+        const forClass = classLevelLabel(course?.category, saved.classLevel)
+        setUploadNote(`Saved${forClass ? ` for ${forClass}` : ''} ✓`)
       } else {
         addLocalMaterial({
           courseId,
@@ -274,13 +338,17 @@ function TutorMaterials() {
       }
       setTitle('')
       setUrl('')
+      setLastUpload(null)
       setDuration('')
       setType('pdf')
       setDownloadable(true)
       await loadMaterials()
     } catch (err) {
+      // Keep the form (and the uploaded file's link) so a retry needs no
+      // new upload.
       setError(err instanceof Error ? err.message : 'Failed to add material')
     } finally {
+      saving.current = false
       setBusy(false)
     }
   }
@@ -329,7 +397,7 @@ function TutorMaterials() {
           {courses.map((c) => (
             <option key={c.id} value={c.id}>
               {c.category
-                ? `${c.title} — ${categoryLabel(c.category as CourseCategory)}`
+                ? `${c.title} — ${categoryLabel(c.category as CourseCategory)}${c.classLevel ? ` ${c.classLevel}` : ''}`
                 : c.title}
             </option>
           ))}
@@ -361,6 +429,21 @@ function TutorMaterials() {
               </option>
             ))}
           </select>
+          {classOptions.length > 1 && (
+            <select
+              value={classLevel}
+              onChange={(e) => setClassLevel(e.target.value)}
+              aria-label='Class'
+              className='sm:col-span-2 h-11 px-3 rounded-lg bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-bold'
+            >
+              <option value=''>Class — choose one…</option>
+              {classOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          )}
           <div className='sm:col-span-2 flex items-center gap-2 flex-wrap'>
             <label className='inline-flex items-center gap-2 h-11 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 cursor-pointer text-[11px] font-black uppercase text-slate-600 transition-colors'>
               {uploading ? (
@@ -406,7 +489,7 @@ function TutorMaterials() {
           </label>
           <button
             type='submit'
-            disabled={busy || !courseId}
+            disabled={busy || uploading || !courseId}
             className='sm:col-span-2 flex items-center justify-center gap-2 h-11 bg-[#002EFF] text-white rounded-xl font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-50'
           >
             <Plus size={15} /> {busy ? 'Adding…' : 'Add Material'}
@@ -453,6 +536,9 @@ function TutorMaterials() {
                 </p>
                 <p className='text-[10px] font-bold text-slate-400'>
                   {TYPE_META[m.type].label}
+                  {m.classLevel
+                    ? ` · ${classLevelLabel(course?.category, m.classLevel)}`
+                    : ''}
                   {m.durationLabel ? ` · ${m.durationLabel}` : ''}
                   {m.isDownloadable ? ' · downloadable' : ''}
                 </p>

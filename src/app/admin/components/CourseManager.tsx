@@ -16,6 +16,7 @@ import { Card } from '@/components/ui/card'
 import { COURSE_CATEGORIES, categoryLabel } from '@/lib/coursesStore'
 import { dsaApi } from '@/lib/api'
 import { adminApi } from '@/lib/admin-api'
+import { classLevelLabel, courseClassChoices } from '@/lib/materialUpload'
 import type { CourseCategory } from '@/lib/types'
 
 // Department scopes a course to Science / Art / Commercial students. Empty ⇒
@@ -50,6 +51,8 @@ type UICourse = {
   category: string
   /** Science / Art / Commercial the course serves; [] ⇒ shared with all. */
   departments: string[]
+  /** The one class it is for (After-School: SS1 / SS2); '' ⇒ every class. */
+  classLevel: string
   /** Ids of every tutor assigned to this course (one or more). */
   tutorIds: string[]
 }
@@ -105,6 +108,10 @@ export default function CourseManager() {
   const [subject, setSubject] = useState('')
   const [category, setCategory] = useState<CourseCategory>('jamb')
   const [departments, setDepartments] = useState<string[]>([])
+  // After-School courses are for SS1 or SS2 (two separate courses); other
+  // categories may optionally target one class.
+  const [classLevel, setClassLevel] = useState('')
+  const classChoices = courseClassChoices(category)
   const toggleDept = (v: string) =>
     setDepartments((prev) =>
       prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v],
@@ -144,6 +151,7 @@ export default function CourseManager() {
             : c.department
               ? [String(c.department)]
               : [],
+          classLevel: c.classLevel ? String(c.classLevel) : '',
           tutorIds: tutorIdsFromCourse(c),
         })),
       )
@@ -168,17 +176,25 @@ export default function CourseManager() {
     setError('')
     const cleanTitle = title.trim()
     if (cleanTitle.length < 2) return setError('Enter a course title')
-    // Block duplicates: same title in the same category. (Same name in a
-    // different category — SS1 vs WAEC Biology — is allowed; one course can serve
-    // several departments, so department isn't part of the key.)
+    if (classChoices.required && !classLevel) {
+      return setError(
+        `Choose the class: ${classChoices.options.map((o) => o.label).join(' or ')}.`,
+      )
+    }
+    // Block duplicates: same title in the same category and class. (Same name
+    // in a different category — SS1 vs WAEC Biology — or for After-School SS1
+    // vs SS2 is allowed; one course can serve several departments, so
+    // department isn't part of the key.)
     const exists = courses.some(
       (c) =>
         c.category === category &&
+        (c.classLevel || '') === classLevel &&
         c.title.trim().toLowerCase() === cleanTitle.toLowerCase(),
     )
     if (exists) {
+      const where = classLevelLabel(category, classLevel) || categoryLabel(category)
       return setError(
-        `“${cleanTitle}” already exists in ${categoryLabel(category)}. Edit that course (you can assign it to more departments) instead of creating a new one.`,
+        `“${cleanTitle}” already exists in ${where}. Edit that course (you can assign it to more departments) instead of creating a new one.`,
       )
     }
     // For department-split classes, force a department choice so the course
@@ -196,6 +212,7 @@ export default function CourseManager() {
         subject: subject.trim() || title.trim(),
         category,
         departments,
+        classLevel,
         // Send both: `tutorId` for the current backend and `tutorIds` for the
         // multi-tutor backend (see docs/backend-request-course-tutors.md).
         tutorId: tutorId || undefined,
@@ -205,6 +222,7 @@ export default function CourseManager() {
       setTitle('')
       setSubject('')
       setTutorId('')
+      setClassLevel('')
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create course')
@@ -235,6 +253,20 @@ export default function CourseManager() {
     async (courseId: string, newTitle: string) => {
       setError('')
       await adminApi.updateCourse(courseId, { title: newTitle })
+      await load()
+    },
+    [load],
+  )
+
+  /** Change the class an existing course is for (PUT /courses/:id). */
+  const setCourseClassLevel = useCallback(
+    async (courseId: string, level: string) => {
+      setError('')
+      try {
+        await adminApi.updateCourse(courseId, { classLevel: level })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not change the class')
+      }
       await load()
     },
     [load],
@@ -304,7 +336,10 @@ export default function CourseManager() {
             </span>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value as CourseCategory)}
+              onChange={(e) => {
+                setCategory(e.target.value as CourseCategory)
+                setClassLevel('')
+              }}
               className='w-full h-11 px-3 rounded-lg bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-bold'
             >
               {COURSE_CATEGORIES.map((c) => (
@@ -359,6 +394,31 @@ export default function CourseManager() {
                     .join(', ')}`}
             </p>
           </div>
+          <label className='space-y-1'>
+            <span className='text-[9px] font-black uppercase text-slate-400'>
+              Class{' '}
+              {classChoices.required ? (
+                <span className='text-rose-500'>*required</span>
+              ) : (
+                '(optional)'
+              )}
+            </span>
+            <select
+              value={classLevel}
+              onChange={(e) => setClassLevel(e.target.value)}
+              aria-label='Class'
+              className='w-full h-11 px-3 rounded-lg bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-bold'
+            >
+              <option value=''>
+                {classChoices.required ? 'Choose the class…' : 'All classes'}
+              </option>
+              {classChoices.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className='space-y-1'>
             <span className='text-[9px] font-black uppercase text-slate-400'>
               Assign tutor
@@ -428,6 +488,7 @@ export default function CourseManager() {
                       onSetTutors={setCourseTutors}
                       onRename={renameCourse}
                       onSetDepartments={setCourseDepartments}
+                      onSetClassLevel={setCourseClassLevel}
                       onRemove={remove}
                     />
                   ))}
@@ -452,6 +513,7 @@ function CourseCard({
   onSetTutors,
   onRename,
   onSetDepartments,
+  onSetClassLevel,
   onRemove,
 }: {
   course: UICourse
@@ -459,6 +521,7 @@ function CourseCard({
   onSetTutors: (courseId: string, ids: string[]) => Promise<void>
   onRename: (courseId: string, title: string) => Promise<void>
   onSetDepartments: (courseId: string, departments: string[]) => Promise<void>
+  onSetClassLevel: (courseId: string, classLevel: string) => Promise<void>
   onRemove: (id: string) => void
 }) {
   const [adding, setAdding] = useState('')
@@ -587,6 +650,38 @@ function CourseCard({
                   all depts
                 </span>
               ))}
+            <span className='text-slate-300'>·</span>
+            <select
+              value={course.classLevel}
+              disabled={busy}
+              aria-label='Class'
+              title='Which class this course is for'
+              onChange={(e) => {
+                setBusy(true)
+                onSetClassLevel(course.id, e.target.value).finally(() =>
+                  setBusy(false),
+                )
+              }}
+              className={`h-5 rounded text-[9px] font-black uppercase tracking-wide outline-none disabled:opacity-50 ${
+                course.category === 'afterschool' && !course.classLevel
+                  ? 'bg-amber-50 text-amber-600'
+                  : 'bg-blue-50 text-[#002EFF]'
+              }`}
+            >
+              {(!courseClassChoices(course.category).required ||
+                !course.classLevel) && (
+                <option value='' disabled={courseClassChoices(course.category).required}>
+                  {courseClassChoices(course.category).required
+                    ? '⚠ set SS1 / SS2'
+                    : 'All classes'}
+                </option>
+              )}
+              {courseClassChoices(course.category).options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <button

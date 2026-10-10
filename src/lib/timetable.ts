@@ -471,6 +471,18 @@ const DEPARTMENTS: Department[] = [
 ]
 
 /**
+ * A student's registered class ("SS2", "ss 1") → their Afternoon School level,
+ * or null when it is not SS1/SS2. Pass it to `timetableKey` so an SS2 student
+ * reads the SS2 timetable, not the SS1 default.
+ */
+export function afterschoolLevelFromClass(
+  value: unknown,
+): AfterschoolLevel | null {
+  const v = String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return isAfterschoolLevel(v) ? v : null
+}
+
+/**
  * Check whether a value is a valid Afternoon School level.
  */
 export function isAfterschoolLevel(

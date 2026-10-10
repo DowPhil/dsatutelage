@@ -777,6 +777,7 @@ import React, {
   useState,
   useEffect,
   useMemo,
+  useRef,
   ChangeEvent,
   FormEvent,
 } from 'react'
@@ -803,8 +804,20 @@ import {
   CourseMaterial,
   CreateMaterialPayload,
 } from '@/lib/admin-api'
-import { uploadToCloudinary, cloudinaryConfigured } from '@/lib/cloudinary'
-import { COURSE_CATEGORIES } from '@/lib/coursesStore'
+import {
+  uploadToCloudinary,
+  cloudinaryConfigured,
+  type CloudinaryResult,
+} from '@/lib/cloudinary'
+import { COURSE_CATEGORIES, categoryLabel } from '@/lib/coursesStore'
+import type { CourseCategory } from '@/lib/types'
+import {
+  buildMaterialPayload,
+  classLevelLabel,
+  classOptionsForCourse,
+  materialDraftError,
+  materialFileError,
+} from '@/lib/materialUpload'
 
 // "General" library entries: materials for a class/programme that belong to no
 // specific subject. Selected as `general:<category>`; the backend keeps one
@@ -852,6 +865,15 @@ export default function LibraryPage(_props?: { courseId?: string }) {
   })
 
   const [fileToUpload, setFileToUpload] = useState<File | null>(null)
+  // The Cloudinary response for the file in the form — its secure_url is what
+  // gets saved, with its public_id and format.
+  const [lastUpload, setLastUpload] = useState<CloudinaryResult | null>(null)
+  // After-School materials are for SS1 or SS2; the pick survives a failed save.
+  const [classLevel, setClassLevel] = useState<string>('')
+  // Shown inside the modal, where the admin is looking (the page banner is
+  // behind it).
+  const [formError, setFormError] = useState<string | null>(null)
+  const saving = useRef(false)
 
   const generalCategory = selectedCourseId.startsWith(GENERAL_PREFIX)
     ? selectedCourseId.slice(GENERAL_PREFIX.length)
@@ -862,6 +884,12 @@ export default function LibraryPage(_props?: { courseId?: string }) {
   const resolvedCourseId = generalCategory
     ? courses.find((c) => c.isGeneral && c.category === generalCategory)?.id ?? ''
     : selectedCourseId
+  // The course the material goes to (a General entry may not exist yet, but
+  // its category already decides which classes it can be for).
+  const selectedCourse = generalCategory
+    ? { category: generalCategory }
+    : courses.find((c) => c.id === selectedCourseId) ?? null
+  const classOptions = classOptionsForCourse(selectedCourse)
 
   // ==========================================
   // DATA FETCHING
@@ -925,12 +953,25 @@ export default function LibraryPage(_props?: { courseId?: string }) {
   // ==========================================
   const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    e.target.value = '' // allow re-picking the same file after a failure
     if (!file) return
+
+    const invalid = materialFileError(file)
+    if (invalid) {
+      setFormError(invalid)
+      return
+    }
+
+    // Drop the previous file's link first, so a failed upload can never leave
+    // an earlier file's URL in the form under this file's name.
+    setFormData((prev) => ({ ...prev, url: '', fileSizeBytes: undefined }))
+    setLastUpload(null)
+    setFileToUpload(null)
 
     try {
       setUploadingFile(true)
-      setError(null)
-      setFileToUpload(file)
+      setFormError(null)
+      setSuccess(null)
 
       // The browser uploads straight to Cloudinary (the backend has no object
       // storage) and we keep the hosted URL — same path used for avatars and
@@ -941,16 +982,16 @@ export default function LibraryPage(_props?: { courseId?: string }) {
       const uploaded = await uploadToCloudinary(file, 'materials')
 
       // Automatically update form fields based on the uploaded file.
+      setFileToUpload(file)
+      setLastUpload(uploaded)
       setFormData((prev) => ({
         ...prev,
         url: uploaded.url,
         fileSizeBytes: uploaded.bytes ?? file.size,
         title: prev.title ? prev.title : file.name.replace(/\.[^/.]+$/, ''),
       }))
-
-      setSuccess('File uploaded. Finalize the form below.')
     } catch (err: any) {
-      setError(err.message || 'An error occurred while uploading file.')
+      setFormError(err.message || 'An error occurred while uploading file.')
     } finally {
       setUploadingFile(false)
     }
@@ -961,28 +1002,36 @@ export default function LibraryPage(_props?: { courseId?: string }) {
   // ==========================================
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!selectedCourseId) {
-      setError('Please select a course to attach this material to.')
-      return
-    }
-    if (!formData.title || !formData.url) {
-      setError('Title and resource URL/File are required.')
+    // One save at a time: a double click must not post the material twice.
+    if (saving.current) return
+    const invalid = materialDraftError(
+      { title: formData.title, url: formData.url, classLevel },
+      selectedCourseId ? selectedCourse : null,
+      { uploading: uploadingFile },
+    )
+    if (invalid) {
+      setFormError(invalid)
       return
     }
 
     try {
+      saving.current = true
       setSubmitting(true)
-      setError(null)
+      setFormError(null)
 
-      const payload: CreateMaterialPayload = {
-        title: formData.title,
-        type: formData.type,
-        url: formData.url,
-        description: formData.description,
-        isDownloadable: formData.isDownloadable,
-        fileSizeBytes: formData.fileSizeBytes,
-        durationSeconds: formData.durationSeconds,
-      }
+      const payload = buildMaterialPayload(
+        {
+          title: formData.title,
+          url: formData.url,
+          classLevel,
+          type: formData.type,
+          isDownloadable: formData.isDownloadable,
+          description: formData.description,
+          durationSeconds: formData.durationSeconds,
+        },
+        selectedCourse,
+        lastUpload,
+      ) as unknown as CreateMaterialPayload
 
       let courseId = resolvedCourseId
       if (generalCategory && !courseId) {
@@ -999,19 +1048,32 @@ export default function LibraryPage(_props?: { courseId?: string }) {
 
       const response = await adminApi.createCourseMaterial(courseId, payload)
 
-      if (response.success) {
-        setSuccess(
-          generalCategory
-            ? 'Material added to General resources successfully!'
-            : 'Material added to course library successfully!',
+      if (response.success && response.data?.url) {
+        const forClass = classLevelLabel(
+          selectedCourse?.category,
+          response.data.classLevel,
         )
-        setMaterials((prev) => [response.data, ...prev])
+        setSuccess(
+          response.duplicate
+            ? 'That file is already in this library — showing the saved copy.'
+            : `${generalCategory ? 'Material added to General resources' : 'Material added to course library'}${forClass ? ` for ${forClass}` : ''}.`,
+        )
+        // Show the saved record — with the URL the server stored.
+        setMaterials((prev) => [
+          response.data,
+          ...prev.filter((m) => m.id !== response.data.id),
+        ])
         setIsModalOpen(false)
         resetForm()
+      } else {
+        setFormError('The server did not confirm the save. Please try again.')
       }
     } catch (err: any) {
-      setError(err.message || 'Failed to save resource.')
+      // Keep everything the admin entered (and the uploaded file's link) so
+      // they can retry without uploading again.
+      setFormError(err.message || 'Failed to save resource.')
     } finally {
+      saving.current = false
       setSubmitting(false)
     }
   }
@@ -1025,6 +1087,8 @@ export default function LibraryPage(_props?: { courseId?: string }) {
       isDownloadable: true,
     })
     setFileToUpload(null)
+    setLastUpload(null)
+    setFormError(null)
   }
 
   // ==========================================
@@ -1070,6 +1134,7 @@ export default function LibraryPage(_props?: { courseId?: string }) {
           onClick={() => {
             setError(null)
             setSuccess(null)
+            setFormError(null)
             setIsModalOpen(true)
           }}
           disabled={!selectedCourseId}
@@ -1130,7 +1195,9 @@ export default function LibraryPage(_props?: { courseId?: string }) {
                 <optgroup label='Subject courses'>
                   {subjectCourses.map((course) => (
                     <option key={course.id} value={course.id}>
-                      {course.title} ({course.subject})
+                      {course.title} ({course.subject}) —{' '}
+                      {categoryLabel(course.category as CourseCategory)}
+                      {course.classLevel ? ` ${course.classLevel}` : ''}
                     </option>
                   ))}
                 </optgroup>
@@ -1212,9 +1279,16 @@ export default function LibraryPage(_props?: { courseId?: string }) {
                         <ExternalLink className='w-6 h-6 text-emerald-500' />
                       )}
                     </div>
-                    <span className='text-xs uppercase tracking-wider font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600'>
-                      {item.type}
-                    </span>
+                    <div className='flex items-center gap-1.5'>
+                      {item.classLevel && (
+                        <span className='text-xs font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700'>
+                          {classLevelLabel(selectedCourse?.category, item.classLevel)}
+                        </span>
+                      )}
+                      <span className='text-xs uppercase tracking-wider font-bold px-2.5 py-1 rounded-full bg-slate-100 text-slate-600'>
+                        {item.type}
+                      </span>
+                    </div>
                   </div>
 
                   <h4 className='font-semibold text-slate-900 line-clamp-1'>
@@ -1281,6 +1355,43 @@ export default function LibraryPage(_props?: { courseId?: string }) {
             </div>
 
             <form onSubmit={handleSubmit} className='space-y-4'>
+              {formError && (
+                <div
+                  role='alert'
+                  className='flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs'
+                >
+                  <AlertCircle className='w-4 h-4 shrink-0' />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              {classOptions.length > 1 && (
+                <div>
+                  <label className='block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1'>
+                    Class
+                  </label>
+                  <select
+                    required
+                    value={classLevel}
+                    onChange={(e) => setClassLevel(e.target.value)}
+                    className='w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none'
+                  >
+                    <option value=''>Choose the class…</option>
+                    {classOptions.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {classOptions.length === 1 && (
+                <p className='text-xs text-slate-500'>
+                  For <span className='font-semibold'>{classOptions[0].label}</span>{' '}
+                  only.
+                </p>
+              )}
+
               <div>
                 <label className='block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1'>
                   Title

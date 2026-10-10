@@ -626,6 +626,7 @@ import {
   gridFromApi,
   slotsFromApi,
   timetableKey,
+  afterschoolLevelFromClass,
   DEFAULT_SLOTS,
   type NextClass,
   type Slot,
@@ -710,7 +711,13 @@ function ModeCard({ student }: { student: StudentProfile }) {
     const t = getToken()
     if (t && !isDemoToken(t)) {
       Promise.allSettled([
-        dsaApi.timetable.get(timetableKey(student.track, student.department)),
+        dsaApi.timetable.get(
+          timetableKey(
+            student.track,
+            student.department,
+            afterschoolLevelFromClass(student.yearLabel),
+          ),
+        ),
         dsaApi.liveClasses.next(student.track),
       ])
         .then(([tt, lc]) => {
@@ -744,7 +751,7 @@ function ModeCard({ student }: { student: StudentProfile }) {
     return () => {
       cancelled = true
     }
-  }, [student.track, student.department])
+  }, [student.track, student.department, student.yearLabel])
 
   if (loading) {
     return <ModeCardSkeleton />

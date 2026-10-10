@@ -82,6 +82,7 @@ import MyCourses from '@/components/dashboard/MyCourses'
 import NotificationBell from '@/components/dashboard/NotificationBell'
 import QuizRunner from '@/components/dashboard/QuizRunner'
 import UnlockPlans from '@/components/dashboard/UnlockPlans'
+import PlanBadge from '@/components/dashboard/PlanBadge'
 import { useTabState } from '@/components/dashboard/useTabState'
 import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
 import { useAnnouncementsUnread } from '@/components/dashboard/useAnnouncementsUnread'
@@ -370,6 +371,7 @@ export default function AcademyDashboard() {
               {student.modeConfig.label}
             </Badge>
           </div>
+          <PlanBadge />
         </div>
       </div>
 
@@ -521,6 +523,7 @@ export default function AcademyDashboard() {
                 track={student.track}
                 mode={student.mode}
                 department={student.department}
+                classLevel={student.yearLabel}
               />
             )}
             {activeView === 'resources' && (
