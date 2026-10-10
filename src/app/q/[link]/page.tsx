@@ -509,7 +509,16 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
   return (
     <div className='min-h-screen bg-[#F8FAFF] flex flex-col'>
       {/* Header */}
-      <header className='flex items-center gap-3 px-5 py-4'>
+      {/* Sticky while taking the quiz so the countdown never scrolls away.
+          Below the warning/confirm overlays (z-50), above the floating
+          buttons (z-40); safe-area padding keeps it clear of phone notches. */}
+      <header
+        className={`flex items-center gap-3 px-5 py-4 ${
+          step === 'quiz'
+            ? 'sticky top-0 z-[45] bg-[#F8FAFF]/95 backdrop-blur border-b border-slate-100 pt-[max(1rem,env(safe-area-inset-top))]'
+            : ''
+        }`}
+      >
         <div className='bg-[#FCB900] p-1.5 rounded-lg'>
           <GraduationCap className='text-[#002EFF]' size={20} />
         </div>
@@ -517,7 +526,15 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
           DSA · Quiz
         </span>
         {step === 'quiz' && minutes > 0 && (
-          <span className='ml-auto flex items-center gap-1.5 text-[12px] font-black text-[#002EFF] tabular-nums'>
+          <span
+            role='timer'
+            aria-label={`Time remaining ${fmt(remaining)}`}
+            className={`ml-auto flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-[13px] font-black tabular-nums ${
+              remaining <= 60
+                ? 'bg-rose-50 text-rose-600'
+                : 'bg-blue-50 text-[#002EFF]'
+            }`}
+          >
             <Clock size={15} /> {fmt(remaining)}
           </span>
         )}

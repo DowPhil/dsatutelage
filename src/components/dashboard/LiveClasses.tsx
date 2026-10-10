@@ -604,7 +604,6 @@ import {
   timetableKey,
   type NextClass,
   type AfterschoolLevel,
-  type Department,
 } from '@/lib/timetable'
 
 import { getUser, getToken } from '@/lib/auth'
@@ -617,7 +616,7 @@ import {
   EXAM_TRACKS,
 } from '@/lib/studentProfile'
 
-import type { ExamTrack } from '@/lib/studentProfile'
+import type { ExamTrack, Department } from '@/lib/studentProfile'
 
 function isLive(): boolean {
   const t = getToken()
@@ -746,7 +745,8 @@ function trackLabel(track: ExamTrack): string {
       return 'Preclinical'
 
     default:
-      return EXAM_TRACKS[track]?.label || String(track)
+      // Every ExamTrack is handled above; this only runs for unexpected data.
+      return String(track)
   }
 }
 

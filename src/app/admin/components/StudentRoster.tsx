@@ -24,6 +24,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Send,
+  Download,
+  Users,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -111,6 +113,33 @@ export default function StudentRoster() {
   const [accessFilter, setAccessFilter] = useState('')
   // '' = everyone, 'pending_otp' = registered but never entered their code.
   const [statusFilter, setStatusFilter] = useState('')
+  // Paid-student filters, decided on the server from verified payment records:
+  // department, the plan actually paid for, and verified-paid / not paid.
+  const [departmentFilter, setDepartmentFilter] = useState('')
+  const [planFilter, setPlanFilter] = useState('')
+  const [paidFilter, setPaidFilter] = useState('')
+  const [plans, setPlans] = useState<{ id: string; name: string; active?: boolean }[]>([])
+  const [exporting, setExporting] = useState(false)
+  const extraFilters = {
+    department: departmentFilter,
+    planId: planFilter,
+    paid: paidFilter,
+  }
+
+  // Plans for the "plan paid for" filter. Staff without plan access simply
+  // don't get the plan dropdown.
+  useEffect(() => {
+    let cancelled = false
+    adminApi
+      .getPlans()
+      .then((res) => {
+        if (!cancelled && Array.isArray(res?.data)) setPlans(res.data)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [bulkSending, setBulkSending] = useState(false)
   const [bulkMsg, setBulkMsg] = useState('')
   // Which unverified students the admin ticked, to email just them.
@@ -165,7 +194,15 @@ export default function StudentRoster() {
 
   // Data Fetching logic with Pagination support
   const fetchStudents = useCallback(
-    async (query = '', page = 1, programme = '', cls = '', access = '', status = '') => {
+    async (
+      query = '',
+      page = 1,
+      programme = '',
+      cls = '',
+      access = '',
+      status = '',
+      extra: { department?: string; planId?: string; paid?: string } = {},
+    ) => {
     setLoading(true)
     try {
       const response = await adminApi.getUsers({
@@ -175,6 +212,9 @@ export default function StudentRoster() {
         class: cls || undefined,
         accessLevel: access || undefined,
         status: status || undefined,
+        department: extra.department || undefined,
+        planId: extra.planId || undefined,
+        paid: extra.paid || undefined,
         page,
         limit,
       })
@@ -232,10 +272,47 @@ export default function StudentRoster() {
   }, [])
 
   useEffect(() => {
-    fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter)
+    fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, extraFilters)
     // Re-fetch on page change or when a filter changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchStudents, currentPage, programmeFilter, classFilter, accessFilter, statusFilter])
+  }, [fetchStudents, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, departmentFilter, planFilter, paidFilter])
+
+  // Download every student matching the current filters (all pages) as .xlsx.
+  const exportStudents = async () => {
+    setExporting(true)
+    try {
+      const { blob, filename, count } = await adminApi.exportStudents({
+        search: searchQuery || undefined,
+        programme: programmeFilter || undefined,
+        class: classFilter || undefined,
+        accessLevel: accessFilter || undefined,
+        status: statusFilter || undefined,
+        department: departmentFilter || undefined,
+        planId: planFilter || undefined,
+        paid: paidFilter || undefined,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      showAlert(
+        'Export Ready',
+        `${count || 'All matching'} student${count === 1 ? '' : 's'} exported to ${filename}.`,
+      )
+    } catch (err) {
+      showAlert(
+        'Export Failed',
+        err instanceof Error ? err.message : 'The export could not be created.',
+        'error',
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // Email every student still waiting on verification a fresh code and a
   // one-tap activation link. The server does 40 per call; keep calling until
@@ -282,7 +359,7 @@ export default function StudentRoster() {
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     setCurrentPage(1)
-    fetchStudents(searchQuery, 1, programmeFilter, classFilter, accessFilter, statusFilter)
+    fetchStudents(searchQuery, 1, programmeFilter, classFilter, accessFilter, statusFilter, extraFilters)
   }
 
   /* ------------------------------------------------------------------ */
@@ -419,12 +496,28 @@ export default function StudentRoster() {
           </span>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className='flex items-center gap-1.5 px-3.5 py-2 bg-[#002EFF] text-white rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-blue-700 transition-all shadow-md shadow-blue-200 active:scale-95'
-        >
-          <Plus size={14} /> Add Student
-        </button>
+        <div className='flex flex-wrap items-center gap-2'>
+          <button
+            type='button'
+            onClick={exportStudents}
+            disabled={exporting || loading}
+            title='Download every student matching the current filters (all pages) as Excel'
+            className='flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wide hover:border-[#002EFF]/40 hover:text-[#002EFF] transition-all active:scale-95 disabled:opacity-50'
+          >
+            {exporting ? (
+              <Loader2 size={14} className='animate-spin' />
+            ) : (
+              <Download size={14} />
+            )}
+            Export Excel
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className='flex items-center gap-1.5 px-3.5 py-2 bg-[#002EFF] text-white rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-blue-700 transition-all shadow-md shadow-blue-200 active:scale-95'
+          >
+            <Plus size={14} /> Add Student
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -453,7 +546,7 @@ export default function StudentRoster() {
       {/* Students asking to move class / programme — approve here */}
       <ChangeRequestsPanel
         onDecided={() =>
-          fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter)
+          fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, extraFilters)
         }
       />
 
@@ -523,6 +616,55 @@ export default function StudentRoster() {
           <option value='active'>Active</option>
           <option value='suspended'>Suspended</option>
         </select>
+        <select
+          value={departmentFilter}
+          onChange={(e) => {
+            setDepartmentFilter(e.target.value)
+            setCurrentPage(1)
+          }}
+          className='h-9 px-2 bg-white border border-slate-200 rounded-lg text-[11px] font-black text-slate-700 outline-none focus:border-[#002EFF]'
+        >
+          <option value=''>All departments</option>
+          <option value='science'>Science</option>
+          <option value='art'>Art</option>
+          <option value='commercial'>Commercial</option>
+        </select>
+        <select
+          value={paidFilter}
+          onChange={(e) => {
+            setPaidFilter(e.target.value)
+            setCurrentPage(1)
+          }}
+          title='Based on confirmed payment records — pending, failed and rejected payments do not count'
+          className='h-9 px-2 bg-white border border-slate-200 rounded-lg text-[11px] font-black text-slate-700 outline-none focus:border-[#002EFF]'
+        >
+          <option value=''>All payments</option>
+          <option value='verified'>Paid (confirmed payment)</option>
+          <option value='unpaid' disabled={!!planFilter}>
+            No confirmed payment
+          </option>
+        </select>
+        {plans.length > 0 && (
+          <select
+            value={planFilter}
+            onChange={(e) => {
+              setPlanFilter(e.target.value)
+              // A plan filter means "paid for this plan".
+              if (e.target.value && paidFilter === 'unpaid') setPaidFilter('')
+              setCurrentPage(1)
+            }}
+            title='Students with a confirmed payment for this plan'
+            className='h-9 max-w-[12rem] px-2 bg-white border border-slate-200 rounded-lg text-[11px] font-black text-slate-700 outline-none focus:border-[#002EFF]'
+          >
+            <option value=''>All plans paid</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.active === false ? ' (inactive)' : ''}
+              </option>
+            ))}
+          </select>
+        )}
         {statusFilter === 'pending_otp' && students.length > 0 && (
           <>
             <button
@@ -543,7 +685,13 @@ export default function StudentRoster() {
             </button>
           </>
         )}
-        {(programmeFilter || classFilter || accessFilter || statusFilter) && (
+        {(programmeFilter ||
+          classFilter ||
+          accessFilter ||
+          statusFilter ||
+          departmentFilter ||
+          planFilter ||
+          paidFilter) && (
           <button
             type='button'
             onClick={() => {
@@ -551,6 +699,9 @@ export default function StudentRoster() {
               setClassFilter('')
               setAccessFilter('')
               setStatusFilter('')
+              setDepartmentFilter('')
+              setPlanFilter('')
+              setPaidFilter('')
               setCurrentPage(1)
             }}
             className='h-9 px-3 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-black uppercase hover:text-[#002EFF]'
@@ -1327,6 +1478,18 @@ function StudentDetailsModal({
   const formatAmount = (amount: number) =>
     `₦${Number(amount || 0).toLocaleString()}`
 
+  const formatDate = (value?: string) => {
+    const date = new Date(value || '')
+    return Number.isNaN(date.getTime())
+      ? '—'
+      : date.toLocaleDateString('en-NG', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          timeZone: 'Africa/Lagos',
+        })
+  }
+
   return (
     <div className='fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200'>
       <div className='w-full max-w-lg max-h-[94dvh] overflow-y-auto bg-white rounded-3xl shadow-2xl border border-slate-100'>
@@ -1520,6 +1683,88 @@ function StudentDetailsModal({
                       This student still has an outstanding payment.
                     </p>
                   )}
+
+                  <div className='pt-3 border-t border-slate-100 space-y-2'>
+                    <span className='text-[10px] font-black uppercase tracking-wider text-slate-400 block'>
+                      Plan Paid For
+                    </span>
+                    {details?.purchasedPlan ? (
+                      <div className='p-3 bg-emerald-50/60 rounded-xl border border-emerald-100 min-w-0'>
+                        <span className='text-xs font-black text-slate-800 block break-words'>
+                          {details.purchasedPlan.name}
+                        </span>
+                        <span className='text-[9px] font-bold text-slate-500 mt-1 block'>
+                          {formatAmount(details.purchasedPlan.amountPaid)} ·{' '}
+                          {details.purchasedPlan.channel === 'online'
+                            ? 'Paid online'
+                            : 'Bank transfer (approved)'}{' '}
+                          · {formatDate(details.purchasedPlan.paidAt)}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className='text-[11px] font-bold text-slate-500'>
+                        {details?.legacyPaymentVerified
+                          ? 'Paid via registration fee or marked paid by an admin — no plan on record.'
+                          : 'No confirmed plan payment.'}
+                      </p>
+                    )}
+
+                    {(details?.paymentHistory?.length || 0) > 1 && (
+                      <ul className='space-y-1'>
+                        {details!.paymentHistory!.map((p) => (
+                          <li
+                            key={p.id}
+                            className='flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-[10px] font-bold text-slate-500 px-1'
+                          >
+                            <span className='text-slate-700 break-words min-w-0'>
+                              {p.plan?.name || 'Plan removed'}
+                            </span>
+                            <span className='tabular-nums'>
+                              {formatAmount(p.amount)} · {formatDate(p.paidAt)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className='rounded-2xl border border-slate-100 overflow-hidden'>
+                <div className='px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center gap-2'>
+                  <Users size={14} className='text-[#002EFF]' />
+                  <span className='text-[10px] font-black uppercase tracking-wider text-slate-700'>
+                    Parent / Guardian
+                  </span>
+                </div>
+
+                <div className='p-4 space-y-2'>
+                  {!details?.guardian && !details?.parentAccounts?.length ? (
+                    <p className='text-[11px] font-bold text-slate-500'>
+                      No parent or guardian details on record.
+                    </p>
+                  ) : (
+                    <>
+                      {details?.guardian && (
+                        <GuardianRow
+                          label='Guardian (from registration)'
+                          name={details.guardian.name}
+                          phone={details.guardian.phone}
+                          email={details.guardian.email}
+                          relationship={details.guardian.relationship}
+                        />
+                      )}
+                      {details?.parentAccounts?.map((p) => (
+                        <GuardianRow
+                          key={p.id}
+                          label='Linked parent account'
+                          name={p.name}
+                          phone={p.phone}
+                          email={p.email}
+                        />
+                      ))}
+                    </>
+                  )}
                 </div>
               </div>
             </>
@@ -1595,6 +1840,57 @@ function StudentInfoCard({
           {extra}
         </span>
       )}
+    </div>
+  )
+}
+
+function GuardianRow({
+  label,
+  name,
+  phone,
+  email,
+  relationship,
+}: {
+  label: string
+  name: string
+  phone?: string
+  email?: string
+  relationship?: string | null
+}) {
+  return (
+    <div className='p-3 bg-slate-50 rounded-xl border border-slate-100 min-w-0'>
+      <span className='text-[9px] font-black uppercase tracking-wider text-slate-400 block'>
+        {label}
+        {relationship ? ` · ${relationship}` : ''}
+      </span>
+      <span className='text-xs font-bold text-slate-800 mt-1 block break-words'>
+        {name}
+      </span>
+      <div className='mt-1 flex flex-col sm:flex-row sm:flex-wrap gap-x-4 gap-y-1 text-[10px] font-bold text-slate-500'>
+        <span className='flex items-center gap-1.5 min-w-0'>
+          <Phone size={11} className='shrink-0' />
+          {phone ? (
+            <a href={`tel:${phone}`} className='hover:text-[#002EFF]'>
+              {phone}
+            </a>
+          ) : (
+            'No phone'
+          )}
+        </span>
+        <span className='flex items-center gap-1.5 min-w-0'>
+          <Mail size={11} className='shrink-0' />
+          {email ? (
+            <a
+              href={`mailto:${email}`}
+              className='truncate hover:text-[#002EFF]'
+            >
+              {email}
+            </a>
+          ) : (
+            'No email'
+          )}
+        </span>
+      </div>
     </div>
   )
 }

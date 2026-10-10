@@ -804,6 +804,12 @@ import {
   CreateMaterialPayload,
 } from '@/lib/admin-api'
 import { uploadToCloudinary, cloudinaryConfigured } from '@/lib/cloudinary'
+import { COURSE_CATEGORIES } from '@/lib/coursesStore'
+
+// "General" library entries: materials for a class/programme that belong to no
+// specific subject. Selected as `general:<category>`; the backend keeps one
+// General course per category, created on the first upload.
+const GENERAL_PREFIX = 'general:'
 
 // Accepts an optional `courseId` because LibraryCourseWrapper passes one; it is
 // not consumed yet (course-scoped library still to be wired). Added to unbreak
@@ -847,6 +853,16 @@ export default function LibraryPage(_props?: { courseId?: string }) {
 
   const [fileToUpload, setFileToUpload] = useState<File | null>(null)
 
+  const generalCategory = selectedCourseId.startsWith(GENERAL_PREFIX)
+    ? selectedCourseId.slice(GENERAL_PREFIX.length)
+    : ''
+  const subjectCourses = courses.filter((c) => !c.isGeneral)
+  // The real course id behind the selection ('' while a General entry has no
+  // course yet — it is created on the first upload).
+  const resolvedCourseId = generalCategory
+    ? courses.find((c) => c.isGeneral && c.category === generalCategory)?.id ?? ''
+    : selectedCourseId
+
   // ==========================================
   // DATA FETCHING
   // ==========================================
@@ -860,9 +876,12 @@ export default function LibraryPage(_props?: { courseId?: string }) {
         const response = await adminApi.getCourses()
         if (response.success && response.data) {
           setCourses(response.data)
-          if (response.data.length > 0) {
-            setSelectedCourseId(response.data[0].id)
-          }
+          const firstSubject = response.data.find((c) => !c.isGeneral)
+          setSelectedCourseId(
+            firstSubject
+              ? firstSubject.id
+              : `${GENERAL_PREFIX}${COURSE_CATEGORIES[0].id}`,
+          )
         }
       } catch (err: any) {
         setError(err.message || 'Failed to load courses.')
@@ -873,15 +892,19 @@ export default function LibraryPage(_props?: { courseId?: string }) {
     loadCourses()
   }, [])
 
-  // 2. Fetch materials whenever selectedCourseId changes
+  // 2. Fetch materials whenever the selected course changes
   useEffect(() => {
-    if (!selectedCourseId) return
+    if (!resolvedCourseId) {
+      // A General entry with no course yet has no materials.
+      setMaterials([])
+      return
+    }
 
     async function loadMaterials() {
       try {
         setLoadingMaterials(true)
         setError(null)
-        const response = await adminApi.getCourseMaterials(selectedCourseId)
+        const response = await adminApi.getCourseMaterials(resolvedCourseId)
         if (response.success && response.data) {
           setMaterials(response.data)
         } else {
@@ -895,7 +918,7 @@ export default function LibraryPage(_props?: { courseId?: string }) {
     }
 
     loadMaterials()
-  }, [selectedCourseId])
+  }, [resolvedCourseId])
 
   // ==========================================
   // FILE UPLOAD HANDLER
@@ -961,13 +984,27 @@ export default function LibraryPage(_props?: { courseId?: string }) {
         durationSeconds: formData.durationSeconds,
       }
 
-      const response = await adminApi.createCourseMaterial(
-        selectedCourseId,
-        payload,
-      )
+      let courseId = resolvedCourseId
+      if (generalCategory && !courseId) {
+        // First General upload for this class/programme: get-or-create its
+        // General course (idempotent on the server).
+        const general = await adminApi.ensureGeneralCourse(generalCategory)
+        courseId = general.data.id
+        setCourses((prev) =>
+          prev.some((c) => c.id === general.data.id)
+            ? prev
+            : [...prev, general.data],
+        )
+      }
+
+      const response = await adminApi.createCourseMaterial(courseId, payload)
 
       if (response.success) {
-        setSuccess('Material added to course library successfully!')
+        setSuccess(
+          generalCategory
+            ? 'Material added to General resources successfully!'
+            : 'Material added to course library successfully!',
+        )
         setMaterials((prev) => [response.data, ...prev])
         setIsModalOpen(false)
         resetForm()
@@ -1082,11 +1119,22 @@ export default function LibraryPage(_props?: { courseId?: string }) {
               onChange={(e) => setSelectedCourseId(e.target.value)}
               className='w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none'
             >
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title} ({course.subject})
-                </option>
-              ))}
+              <optgroup label='General — no specific subject'>
+                {COURSE_CATEGORIES.map((c) => (
+                  <option key={c.id} value={`${GENERAL_PREFIX}${c.id}`}>
+                    General — {c.label}
+                  </option>
+                ))}
+              </optgroup>
+              {subjectCourses.length > 0 && (
+                <optgroup label='Subject courses'>
+                  {subjectCourses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.title} ({course.subject})
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           )}
         </div>

@@ -107,6 +107,78 @@ export interface GetUsersParams {
   examTrack?: string
   /** Filter students by access tier: free | portal | tutorial | paid. */
   accessLevel?: string
+  /** Filter students by department: science | art | commercial. */
+  department?: string
+  /** Students with a verified payment for this plan id. */
+  planId?: string
+  /** verified = has a verified payment record; unpaid = has none. */
+  paid?: 'verified' | 'unpaid' | string
+}
+
+/** A verified payment (completed online / approved offline). */
+export interface StudentPaymentRecord {
+  id: string
+  channel: 'online' | 'offline'
+  method?: string
+  plan: {
+    id: string
+    name: string
+    kind: string
+    amount: number
+    durationMonths: number
+  } | null
+  amount: number
+  months?: number
+  reference?: string
+  paidAt: string
+  approvedAt?: string | null
+}
+
+/** One month of GET /api/admin/finance/monthly-revenue. */
+export interface RevenueMonth {
+  month: string
+  label: string
+  total: number
+  count: number
+  online: { total: number; count: number }
+  offline: { total: number; count: number }
+  isPartial: boolean
+}
+
+export interface MonthlyRevenueResponse {
+  success: boolean
+  data: {
+    currency: string
+    timezone: string
+    basis: 'gross'
+    period: { from: string; to: string; months: number }
+    months: RevenueMonth[]
+    totals: {
+      total: number
+      count: number
+      online: { total: number; count: number }
+      offline: { total: number; count: number }
+    }
+    comparison: {
+      month: {
+        current: string
+        previous: string
+        currentTotal: number
+        previousTotal: number
+        change: number
+        changePct: number | null
+        currentIsPartial: boolean
+      }
+      period: {
+        previousFrom: string
+        previousTo: string
+        previousTotal: number
+        previousCount: number
+        change: number
+        changePct: number | null
+      }
+    }
+  }
 }
 
 export interface StudentDetailsResponse {
@@ -135,6 +207,34 @@ export interface StudentDetailsResponse {
       planAmount: number
       outstandingAmount: number
     }
+    /** Plan of the most recent verified payment; null if none. */
+    purchasedPlan?: {
+      id: string
+      name: string
+      kind: string
+      amount: number
+      durationMonths: number
+      amountPaid: number
+      months?: number
+      paidAt: string
+      channel: 'online' | 'offline'
+    } | null
+    paymentHistory?: StudentPaymentRecord[]
+    /** Paid via the old registration fee / admin "mark as paid" (no plan record). */
+    legacyPaymentVerified?: boolean
+    guardian?: {
+      name: string
+      phone: string
+      email: string
+      relationship: string | null
+    } | null
+    parentAccounts?: Array<{
+      id: string
+      name: string
+      phone: string
+      email: string
+      role: string
+    }>
     accountStatus: string
   }
 }
@@ -202,6 +302,8 @@ export interface Course {
   thumbnailUrl?: string
   price?: number
   isPublished?: boolean
+  /** The category's General course (materials with no specific subject). */
+  isGeneral?: boolean
   progressPercent?: number
   createdAt?: string | number
   updatedAt?: string | number
@@ -458,12 +560,62 @@ export const adminApi = {
     if (params.examTrack) queryParams.append('examTrack', params.examTrack)
     if (params.accessLevel)
       queryParams.append('accessLevel', params.accessLevel)
+    if (params.department) queryParams.append('department', params.department)
+    if (params.planId) queryParams.append('planId', params.planId)
+    if (params.paid) queryParams.append('paid', params.paid)
 
     const queryString = queryParams.toString()
     return adminFetch<GetUsersResponse>(
       `/api/admin/users${queryString ? `?${queryString}` : ''}`,
     )
   },
+
+  /**
+   * Download every student matching the roster filters as .xlsx
+   * (name, phone, email). Endpoint: GET /api/admin/users/export
+   */
+  exportStudents: async (
+    params: Omit<GetUsersParams, 'role' | 'page' | 'limit'>,
+  ): Promise<{ blob: Blob; filename: string; count: number }> => {
+    const queryParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '')
+        queryParams.append(key, String(value))
+    })
+    const session = getAdminSession()
+    const token =
+      session?.token ||
+      (typeof window !== 'undefined' ? localStorage.getItem('token') : null)
+    const qs = queryParams.toString()
+    const response = await fetch(
+      `${BASE_URL.replace(/\/+$/, '')}/api/admin/users/export${qs ? `?${qs}` : ''}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    )
+    if (!response.ok) {
+      const errorData = await response
+        .json()
+        .catch(() => ({ message: 'The export could not be created.' }))
+      throw new Error(
+        errorData.message || `HTTP error! Status: ${response.status}`,
+      )
+    }
+    const disposition = response.headers.get('content-disposition') || ''
+    const filename =
+      /filename="?([^";]+)"?/i.exec(disposition)?.[1] ||
+      `dsa-students-${new Date().toISOString().slice(0, 10)}.xlsx`
+    return {
+      blob: await response.blob(),
+      filename,
+      count: Number(response.headers.get('x-export-count')) || 0,
+    }
+  },
+
+  /** All payment plans, incl. inactive (GET /api/admin/plans). */
+  getPlans: () =>
+    adminFetch<{
+      success: boolean
+      data: Array<{ id: string; name: string; track?: string; active?: boolean }>
+    }>('/api/admin/plans'),
 
   /**
  * Get complete student profile/details
@@ -942,6 +1094,16 @@ getStudentDetails: (id: string) =>
       },
     )
   },
+
+  /**
+   * POST /api/courses/general — get (or create once) the category's General
+   * course, for materials that belong to no specific subject.
+   */
+  ensureGeneralCourse: (category: string) =>
+    adminFetch<CourseDetailResponse>('/api/courses/general', {
+      method: 'POST',
+      body: JSON.stringify({ category }),
+    }),
 
   /** Request a presigned URL target for direct upload */
   signUploadUrl: (params: SignUploadUrlParams) =>

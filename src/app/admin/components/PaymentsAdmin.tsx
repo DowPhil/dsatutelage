@@ -667,6 +667,7 @@ import {
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { dsaApi } from '@/lib/api'
+import type { MonthlyRevenueResponse } from '@/lib/admin-api'
 import { DEFAULT_CAPS, type AccessCaps } from '@/lib/access'
 
 function adminToken(): string | undefined {
@@ -1515,48 +1516,6 @@ export function OfflineQueueSection({
     [pendingRows],
   )
 
-  const dailyRevenue = useMemo(() => {
-    const days: {
-      label: string
-      amount: number
-    }[] = []
-
-    for (let i = 6; i >= 0; i -= 1) {
-      const date = new Date()
-
-      date.setHours(0, 0, 0, 0)
-      date.setDate(date.getDate() - i)
-
-      const amount = approvedRows.reduce((sum, row) => {
-        const paymentDate = new Date(str(row.createdAt))
-
-        if (Number.isNaN(paymentDate.getTime())) return sum
-
-        paymentDate.setHours(0, 0, 0, 0)
-
-        if (paymentDate.getTime() === date.getTime()) {
-          return sum + Number(row.amount || 0)
-        }
-
-        return sum
-      }, 0)
-
-      days.push({
-        label: date.toLocaleDateString('en-NG', {
-          weekday: 'short',
-        }),
-        amount,
-      })
-    }
-
-    return days
-  }, [approvedRows])
-
-  const maxRevenue = Math.max(
-    ...dailyRevenue.map((day) => day.amount),
-    1,
-  )
-
   const review = async (
     row: PaymentRow,
     decision: 'approve' | 'reject',
@@ -1674,55 +1633,8 @@ export function OfflineQueueSection({
           />
         </div>
 
-        {/* Revenue graph */}
-        <div className='rounded-2xl border border-slate-100 p-3.5'>
-          <div className='flex items-center justify-between mb-3'>
-            <div>
-              <p className='text-[10px] font-black uppercase text-slate-500'>
-                Payment received
-              </p>
-
-              <p className='text-[9px] font-bold text-slate-400'>
-                Last 7 days
-              </p>
-            </div>
-
-            <p className='text-sm font-black text-slate-800'>
-              {naira(totalReceived)}
-            </p>
-          </div>
-
-          <div className='h-24 flex items-end gap-1.5 sm:gap-2'>
-            {dailyRevenue.map((day) => {
-              const height =
-                day.amount > 0
-                  ? Math.max(
-                      8,
-                      (day.amount / maxRevenue) * 100,
-                    )
-                  : 3
-
-              return (
-                <div
-                  key={day.label}
-                  className='flex-1 h-full flex flex-col justify-end items-center gap-1'
-                >
-                  <div
-                    className='w-full max-w-8 rounded-t-md bg-[#002EFF]/80 hover:bg-[#002EFF] transition-all'
-                    style={{
-                      height: `${height}%`,
-                    }}
-                    title={`${day.label}: ${naira(day.amount)}`}
-                  />
-
-                  <span className='text-[8px] font-bold text-slate-400'>
-                    {day.label}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        {/* Revenue graph — monthly totals aggregated on the server */}
+        <MonthlyRevenueChart token={token} refreshKey={approvedRows.length} />
 
         {/* Pending */}
         <div className='space-y-2'>
@@ -2259,6 +2171,247 @@ export function OfflineQueueSection({
 }
 
 /* ------------------------------ Helpers ------------------------------ */
+
+type RevenueData = MonthlyRevenueResponse['data']
+
+const REVENUE_PERIODS = [6, 12, 24] as const
+
+const changeText = (pct: number | null, change: number): string => {
+  if (pct === null) return change > 0 ? 'new revenue' : 'no change'
+  return `${pct > 0 ? '+' : ''}${pct}%`
+}
+
+/**
+ * Monthly revenue from verified payments (completed online + approved
+ * offline), grouped by Africa/Lagos month on the server. Pending, failed and
+ * rejected payments are excluded; there are no refund records, so this is
+ * gross collections.
+ */
+function MonthlyRevenueChart({
+  token,
+  refreshKey,
+}: {
+  token?: string
+  refreshKey: number
+}) {
+  const [months, setMonths] = useState<number>(12)
+  const [data, setData] = useState<RevenueData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [active, setActive] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    dsaApi.payments
+      .monthlyRevenue(months, token)
+      .then((d) => {
+        if (cancelled) return
+        setData(d)
+        setError(null)
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return
+        setError(
+          e instanceof Error
+            ? `Could not load revenue: ${e.message}`
+            : 'Could not load revenue.',
+        )
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [months, token, refreshKey])
+
+  const max = Math.max(1, ...(data?.months ?? []).map((m) => m.total))
+  const shown = data?.months.find((m) => m.month === active) ?? null
+  const monthCmp = data?.comparison.month
+  const prevLabel = monthCmp
+    ? data?.months.find((m) => m.month === monthCmp.previous)?.label ??
+      monthCmp.previous
+    : ''
+
+  return (
+    <div className='rounded-2xl border border-slate-100 p-3.5'>
+      <div className='flex flex-wrap items-start justify-between gap-2 mb-3'>
+        <div className='min-w-0'>
+          <p className='text-[10px] font-black uppercase text-slate-500'>
+            Monthly revenue
+          </p>
+          <p className='text-[9px] font-bold text-slate-400'>
+            Confirmed payments
+            {data
+              ? ` · ${data.months[0]?.label} – ${data.months[data.months.length - 1]?.label}`
+              : ''}{' '}
+            · Lagos time
+          </p>
+        </div>
+
+        <div className='flex items-center gap-2'>
+          <select
+            value={months}
+            onChange={(e) => {
+              setLoading(true)
+              setMonths(Number(e.target.value))
+            }}
+            aria-label='Reporting period'
+            className='h-7 px-2 rounded-lg bg-slate-50 text-[10px] font-black text-slate-600 outline-none focus:ring-2 focus:ring-[#002EFF]/30'
+          >
+            {REVENUE_PERIODS.map((p) => (
+              <option key={p} value={p}>
+                Last {p} months
+              </option>
+            ))}
+          </select>
+          {data && (
+            <p className='text-sm font-black text-slate-800 tabular-nums'>
+              {naira(data.totals.total)}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {error ? (
+        <p className='text-[11px] font-bold text-rose-600 bg-rose-50 rounded-lg px-3 py-2'>
+          {error}
+        </p>
+      ) : loading && !data ? (
+        <div className='h-28 flex items-center justify-center'>
+          <Loader2 size={16} className='animate-spin text-[#002EFF]' />
+        </div>
+      ) : data && data.totals.count === 0 ? (
+        <div className='h-28 rounded-xl bg-slate-50 flex flex-col items-center justify-center text-center px-3'>
+          <p className='text-[11px] font-black text-slate-500'>
+            No confirmed payments in this period
+          </p>
+          <p className='text-[9px] font-bold text-slate-400'>
+            Approved transfers and completed online payments appear here.
+          </p>
+        </div>
+      ) : data ? (
+        <>
+          {/* Hover/tap readout — stays in text ink, not the bar colour */}
+          <p
+            className='text-[10px] font-bold text-slate-500 mb-2 min-h-[15px] tabular-nums'
+            aria-live='polite'
+          >
+            {shown ? (
+              <>
+                <span className='font-black text-slate-800'>
+                  {shown.label}
+                  {shown.isPartial ? ' (so far)' : ''}: {naira(shown.total)}
+                </span>{' '}
+                · {shown.count} payment{shown.count === 1 ? '' : 's'} · online{' '}
+                {naira(shown.online.total)} · transfer{' '}
+                {naira(shown.offline.total)}
+              </>
+            ) : monthCmp ? (
+              <>
+                This month{monthCmp.currentIsPartial ? ' so far' : ''}{' '}
+                <span className='font-black text-slate-800'>
+                  {naira(monthCmp.currentTotal)}
+                </span>{' '}
+                vs {prevLabel} {naira(monthCmp.previousTotal)} (
+                <span
+                  className={
+                    monthCmp.change > 0
+                      ? 'text-emerald-600'
+                      : monthCmp.change < 0
+                        ? 'text-rose-600'
+                        : ''
+                  }
+                >
+                  {changeText(monthCmp.changePct, monthCmp.change)}
+                </span>
+                )
+              </>
+            ) : null}
+          </p>
+
+          <div
+            className='h-28 flex items-end gap-[2px] sm:gap-1'
+            onMouseLeave={() => setActive(null)}
+            aria-hidden='true'
+          >
+            {data.months.map((m) => {
+              const height =
+                m.total > 0 ? Math.max(4, (m.total / max) * 100) : 0
+              const isActive = active === m.month
+              return (
+                <button
+                  key={m.month}
+                  type='button'
+                  tabIndex={-1}
+                  onMouseEnter={() => setActive(m.month)}
+                  onFocus={() => setActive(m.month)}
+                  onClick={() => setActive(isActive ? null : m.month)}
+                  className='flex-1 min-w-0 h-full flex flex-col justify-end items-center gap-1'
+                >
+                  <div
+                    className={`w-full max-w-8 rounded-t-[4px] transition-colors ${
+                      m.total === 0
+                        ? 'bg-slate-100'
+                        : isActive
+                          ? 'bg-[#002EFF]'
+                          : m.isPartial
+                            ? 'bg-[#002EFF]/45'
+                            : 'bg-[#002EFF]/80'
+                    }`}
+                    style={{ height: m.total > 0 ? `${height}%` : '2px' }}
+                  />
+                  <span
+                    className={`text-[8px] font-bold truncate max-w-full ${
+                      isActive ? 'text-slate-700' : 'text-slate-400'
+                    }`}
+                  >
+                    {m.label.split(' ')[0]}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <p className='text-[9px] font-bold text-slate-400 mt-2'>
+            {data.totals.count} payment{data.totals.count === 1 ? '' : 's'} ·
+            previous {data.period.months} months{' '}
+            {naira(data.comparison.period.previousTotal)} (
+            {changeText(
+              data.comparison.period.changePct,
+              data.comparison.period.change,
+            )}
+            ) · gross, before refunds (none are recorded)
+          </p>
+
+          {/* Table view for screen readers */}
+          <table className='sr-only'>
+            <caption>Monthly revenue, confirmed payments</caption>
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Revenue</th>
+                <th>Payments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.months.map((m) => (
+                <tr key={m.month}>
+                  <td>
+                    {m.label}
+                    {m.isPartial ? ' (month to date)' : ''}
+                  </td>
+                  <td>{naira(m.total)}</td>
+                  <td>{m.count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : null}
+    </div>
+  )
+}
 
 function SummaryCard({
   icon,

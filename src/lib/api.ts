@@ -16,6 +16,7 @@ import type {
   LeaderboardEntry,
   Program,
 } from './types'
+import type { MonthlyRevenueResponse } from './admin-api'
 
 // Canonical base URL. Every other file in the app used the non-www host
 // (`api.distinguishedscholarsacademy.com`); only this client previously used
@@ -1970,6 +1971,18 @@ export const dsaApi = {
       fetch(`${BASE_URL}/payments/offline/mine`, { headers: getHeaders(token) })
         .then((r) => handleResponse<{ data?: PaymentStatus }>(r))
         .then((r) => (r as { data?: PaymentStatus }).data ?? null),
+
+    // GET /admin/finance/monthly-revenue?months= — verified payments grouped
+    // by Africa/Lagos month (admin, or staff with reports.view/payments.view).
+    monthlyRevenue: (months: number, token?: string) =>
+      fetch(
+        `${BASE_URL}/admin/finance/monthly-revenue?months=${encodeURIComponent(String(months))}`,
+        { headers: getHeaders(token) },
+      )
+        .then((r) =>
+          handleResponse<{ data?: MonthlyRevenueResponse['data'] }>(r),
+        )
+        .then((r) => (r as { data: MonthlyRevenueResponse['data'] }).data),
 
     // GET /admin/payments/offline — the review queue (admin).
     offlineQueue: (token?: string) =>
