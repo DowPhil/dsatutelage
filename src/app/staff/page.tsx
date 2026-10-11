@@ -638,6 +638,8 @@ import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
 import StudentReports from '@/components/dashboard/StudentReports'
 import Announcements from '@/components/dashboard/Announcements'
 import PeopleRoster from '@/app/admin/components/PeopleRoster'
+import StudentRoster from '@/app/admin/components/StudentRoster'
+import GuardianManagement from '@/components/dashboard/GuardianManagement'
 import SupportTickets from '@/app/admin/components/SupportTickets'
 import { OfflineQueueSection } from '@/app/admin/components/PaymentsAdmin'
 import QuizBuilder from '@/app/admin/components/QuizBuilder'
@@ -772,7 +774,7 @@ export default function StaffDashboard() {
       })
     }
 
-    if (can('guardians.view') || can('guardians.create')) {
+    if (can('guardians.view') || can('guardians.create') || can('guardians.manage')) {
       items.push({
         key: 'guardians',
         label: 'Guardians',
@@ -814,7 +816,7 @@ export default function StaffDashboard() {
     if (can('reports.view') || can('attendance.manage')) {
       items.push({
         key: 'reports',
-        label: 'Reports',
+        label: 'Attendance & Performance',
         icon: BarChart3,
       })
     }
@@ -953,17 +955,23 @@ export default function StaffDashboard() {
       {/* ------------------------------------------------------------------ */}
       {/* Students */}
       {/* ------------------------------------------------------------------ */}
-      {/*
-        Students has been moved to:
-
-        /staff/students
-
-        The DashboardShell navigation still exposes the Students tab based
-        on permissions, but the actual student roster is now handled by
-        src/app/staff/students/page.tsx.
-      */}
+      {/* Students: the admin's roster, with what this role may do. The
+          server applies the staff roster (paid accounts) and checks every
+          action again. */}
       {view === 'students' && (
-        <StudentsRedirectPanel />
+        <StudentRoster
+          access={{
+            canCreate: can('students.manage'),
+            canEdit: can('students.manage'),
+            canChangeStatus: can('students.manage'),
+            canDelete: can('students.manage'),
+            canExport: can('students.manage'),
+            canSendActivation: can('students.manage'),
+            canReviewChanges: can('students.manage'),
+            canSeePlans: can('payments.manage'),
+          }}
+          scopeNote="The staff roster: students on a paid plan with access switched on. Free accounts are managed by an admin."
+        />
       )}
 
       {/* Tutors / guardians: the admin roster without staff-role editing or
@@ -978,11 +986,13 @@ export default function StaffDashboard() {
       )}
 
       {view === 'guardians' && (
-        <PeopleRoster
-          kind="guardians"
-          canCreate={can('guardians.create')}
-          canManageAccounts={false}
-          canManageRoles={false}
+        <GuardianManagement
+          access={{
+            canCreate: can('guardians.create'),
+            canManage: can('guardians.manage'),
+            canDelete: false,
+          }}
+          scopeNote="Guardians can be linked to students on the staff roster. Deleting a guardian account is for an admin."
         />
       )}
 
@@ -1195,44 +1205,6 @@ function OverviewPanel({
           , and enforced by the backend on
           every action.
         </p>
-      </Card>
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// Students
-// -----------------------------------------------------------------------------
-
-function StudentsRedirectPanel() {
-  return (
-    <div className="space-y-4">
-      <Card className="rounded-3xl border-none shadow-sm bg-white p-8">
-        <div className="flex flex-col items-center justify-center text-center">
-          <div className="h-14 w-14 rounded-2xl bg-blue-50 text-[#002EFF] flex items-center justify-center">
-            <Users size={25} />
-          </div>
-
-          <h2 className="mt-4 text-xl font-black text-[#002EFF] uppercase">
-            Students
-          </h2>
-
-          <p className="mt-2 max-w-md text-sm text-slate-500">
-            The student roster is now available
-            on the dedicated Students page.
-          </p>
-
-          <Button
-            type="button"
-            onClick={() => {
-              window.location.href =
-                '/staff/students'
-            }}
-            className="mt-5 rounded-xl bg-[#002EFF] text-white font-black text-xs uppercase"
-          >
-            Open Students
-          </Button>
-        </div>
       </Card>
     </div>
   )

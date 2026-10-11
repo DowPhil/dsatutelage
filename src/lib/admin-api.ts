@@ -742,6 +742,16 @@ getStudentDetails: (id: string) =>
     ),
 
   /**
+   * Edit one account. Guardians: { fullname, email, phoneNumber, wardId }
+   * (wardId re-links them to another student). Endpoint: PATCH /api/admin/users/:id
+   */
+  updateUser: <T = ActionSuccessResponse>(id: string, data: Record<string, unknown>) =>
+    adminFetch<T>(`/api/admin/users/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  /**
    * Create tutor, parent, staff, or admin account directly
    * Endpoint: POST /api/admin/staff
    */

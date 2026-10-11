@@ -46,9 +46,12 @@ export default function TrackOverride({
   studentId,
   current,
   onChanged,
+  disabled = false,
 }: {
   studentId: string
   current?: string
+  /** Show the value without letting it be changed. */
+  disabled?: boolean
   onChanged?: (track: string) => void
 }) {
   const [value, setValue] = useState<ExamTrack | ''>(toTrackId(current))
@@ -82,7 +85,7 @@ export default function TrackOverride({
       <select
         value={value}
         onChange={(e) => change(e.target.value as ExamTrack)}
-        disabled={busy}
+        disabled={busy || disabled}
         title='Override exam track'
         onClick={(e) => e.stopPropagation()}
         className={`h-7 pl-2 pr-1 rounded-lg text-[10px] font-black bg-slate-50 border outline-none ${

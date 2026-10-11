@@ -183,6 +183,21 @@ async function fetchAllPages(
 }
 
 /** Default headers, including the Bearer token when available. */
+/** GET /community/access. Cap fields are for admins; `me` for students. */
+export interface CommunityAccessStatus {
+  access: 'all' | 'paid'
+  freeStudentCap?: number | null
+  freeStudents?: number
+  capacityAvailable?: boolean
+  placesLeft?: number | null
+  me?: {
+    allowed: boolean
+    tier: 'paid' | 'free' | null
+    reason: 'paid_only' | 'cap_reached' | 'account' | null
+    message: string | null
+  }
+}
+
 const getHeaders = (token?: string, isJson = true): HeadersInit => {
   const headers: Record<string, string> = {}
   if (isJson) headers['Content-Type'] = 'application/json'
@@ -1708,20 +1723,26 @@ export const dsaApi = {
         .then((r) => (r as { data?: unknown }).data ?? r),
 
     // GET /community/access — who may open the Community ('all' | 'paid').
+    // Admins also get the free-student cap and how full it is; a student
+    // gets `me`: may they come in, and if not, why.
     getAccess: (token?: string) =>
       fetch(`${BASE_URL}/community/access`, { headers: getHeaders(token) })
-        .then((r) => handleResponse<{ data?: { access?: string } }>(r))
-        .then((r) => (r as { data?: { access?: string } }).data?.access ?? 'all'),
+        .then((r) => handleResponse<{ data?: CommunityAccessStatus }>(r))
+        .then((r) => r?.data ?? ({ access: 'all' } as CommunityAccessStatus)),
 
-    // PATCH /community/access (admin) — set it.
-    setAccess: (access: 'all' | 'paid', token?: string) =>
+    // PATCH /community/access (admin) — Community Access (Free = 'all',
+    // Paid = 'paid') and/or the free-student cap (null = unlimited).
+    setAccess: (
+      change: { access?: 'all' | 'paid'; freeStudentCap?: number | null },
+      token?: string,
+    ) =>
       fetch(`${BASE_URL}/community/access`, {
         method: 'PATCH',
         headers: getHeaders(token),
-        body: JSON.stringify({ access }),
+        body: JSON.stringify(change),
       })
-        .then((r) => handleResponse<{ data?: { access?: string } }>(r))
-        .then((r) => (r as { data?: { access?: string } }).data?.access ?? access),
+        .then((r) => handleResponse<{ data?: CommunityAccessStatus }>(r))
+        .then((r) => r?.data ?? ({ access: change.access ?? 'all' } as CommunityAccessStatus)),
 
     // POST /community/messages/:id/vote — pick a poll option (re-voting moves it).
     vote: (messageId: string, option: number, token?: string) =>

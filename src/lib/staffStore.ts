@@ -350,6 +350,12 @@ export const PERMISSIONS: Permission[] = [
     module: 'People',
   },
 
+  {
+    key: 'guardians.manage',
+    label: 'Edit guardians & their linked student',
+    module: 'People',
+  },
+
   // ---------------------------------------------------------------------------
   // Academics
   // ---------------------------------------------------------------------------
@@ -538,6 +544,10 @@ const SEED_ROLES: StaffRole[] = [
       'students.manage',
       'students.view',
       'announcements.send',
+      'reports.view',
+      'guardians.view',
+      'guardians.create',
+      'guardians.manage',
     ],
   },
 

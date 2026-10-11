@@ -488,6 +488,7 @@ import Assessments from './components/Assessments'
 import CommunityModeration from './components/CommunityModeration'
 import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
 import StudentReports from '@/components/dashboard/StudentReports'
+import GuardianManagement from '@/components/dashboard/GuardianManagement'
 import PaymentsAdmin from './components/PaymentsAdmin'
 import RolesPermissions from './components/RolesPermissions'
 import SupportTickets from './components/SupportTickets'
@@ -673,7 +674,7 @@ export default function AdminAdmin() {
       case 'view-tutors':
         return <PeopleRoster kind='tutors' />
       case 'view-guardians':
-        return <PeopleRoster kind='guardians' />
+        return <GuardianManagement />
       case 'courses':
         return <CourseManager />
       case 'assessments':

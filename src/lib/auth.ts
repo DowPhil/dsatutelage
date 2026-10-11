@@ -130,6 +130,14 @@ export function setSession(params: {
   localStorage.setItem('token', token)
   if (user) localStorage.setItem(USER_KEY, JSON.stringify(user))
   const resolvedRole = role || user?.role || 'student'
+  // adminApi prefers an admin session's token when one is stored. A previous
+  // admin sign-in on this browser must not leave its token behind for a
+  // staff member (or anyone else) to act with.
+  if (resolvedRole !== 'admin') {
+    localStorage.removeItem('admin_token')
+    localStorage.removeItem('admin_user')
+    localStorage.removeItem('admin_role')
+  }
   localStorage.setItem(ROLE_KEY, resolvedRole)
   // Cookie is what middleware.ts checks for route protection. It carries the
   // role too — a student session must not read as an admin one. Secure so it

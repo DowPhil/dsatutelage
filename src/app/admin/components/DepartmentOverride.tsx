@@ -32,9 +32,12 @@ export default function DepartmentOverride({
   studentId,
   current,
   onChanged,
+  disabled = false,
 }: {
   studentId: string
   current?: string
+  /** Show the value without letting it be changed. */
+  disabled?: boolean
   onChanged?: (department: string) => void
 }) {
   const [value, setValue] = useState<Department | ''>(toDeptId(current))
@@ -64,7 +67,7 @@ export default function DepartmentOverride({
       <select
         value={value}
         onChange={(e) => change(e.target.value as Department)}
-        disabled={busy}
+        disabled={busy || disabled}
         title='Set department'
         onClick={(e) => e.stopPropagation()}
         className={`h-7 pl-2 pr-1 rounded-lg text-[10px] font-black bg-slate-50 border outline-none ${

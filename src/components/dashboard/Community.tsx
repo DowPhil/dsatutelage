@@ -50,7 +50,7 @@ import {
   SlidersHorizontal,
   CheckCheck,
 } from 'lucide-react'
-import { dsaApi } from '@/lib/api'
+import { dsaApi, type CommunityAccessStatus } from '@/lib/api'
 import { getToken, getUser } from '@/lib/auth'
 import {
   acquireRealtime,
@@ -386,6 +386,9 @@ export default function Community({
   // Rooms this student was removed from: listed so they can rejoin, but
   // nothing in them is fetched (the server would refuse it anyway).
   const removedRoomsRef = useRef<Set<string>>(new Set())
+  // A student the server keeps out (paid-only, cap reached, account): show
+  // why, and fetch nothing until that changes.
+  const blockedRef = useRef(false)
   useEffect(() => {
     removedRoomsRef.current = new Set(rawChannels.filter((c) => c.removed).map((c) => c.id))
   }, [rawChannels])
@@ -765,6 +768,11 @@ export default function Community({
 
     // Detect whether we're loading a different channel.
     const switching = msgChannelRef.current !== channel
+
+    if (blockedRef.current) {
+      setLoading(false)
+      return
+    }
 
     // Removed from this room: show the rejoin prompt, fetch nothing.
     if (removedRoomsRef.current.has(channel)) {
@@ -1643,27 +1651,54 @@ const cancelRecording = useCallback(() => {
     [load, token],
   )
 
-  // Admin: load + change who can open the Community.
-  useEffect(() => {
-    if (mode !== 'admin') return
-    let cancelled = false
-    dsaApi.community
-      .getAccess(token)
-      .then((a) => {
-        if (!cancelled) setAccess(a === 'paid' ? 'paid' : 'all')
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
+  // Community Access (Free / Paid) and the free-student cap: the admin sees
+  // and changes them; a student learns whether they may come in. The server
+  // decides; this only shows it.
+  const [capInfo, setCapInfo] = useState<CommunityAccessStatus | null>(null)
+  const [capDraft, setCapDraft] = useState('')
+  const [capUnlimited, setCapUnlimited] = useState(false)
+  const [capSaving, setCapSaving] = useState(false)
+  const [capMessage, setCapMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [gate, setGate] = useState<CommunityAccessStatus['me'] | null>(null)
+  const wasBlockedRef = useRef(false)
+
+  const showStatus = useCallback(
+    (a: CommunityAccessStatus) => {
+      setAccess(a.access === 'paid' ? 'paid' : 'all')
+      if (mode === 'admin') {
+        setCapInfo(a)
+        setCapUnlimited(a.freeStudentCap == null)
+        setCapDraft(a.freeStudentCap == null ? '' : String(a.freeStudentCap))
+      }
+    },
+    [mode],
+  )
+
+  const refreshAccess = useCallback(async () => {
+    try {
+      const a = await dsaApi.community.getAccess(token)
+      showStatus(a)
+      if (mode === 'student') {
+        wasBlockedRef.current = blockedRef.current
+        blockedRef.current = !!a.me && !a.me.allowed
+        setGate(a.me ?? null)
+      }
+    } catch {
+      /* the rooms themselves still answer with the reason */
     }
-  }, [mode, token])
+  }, [mode, token, showStatus])
+
+  useEffect(() => {
+    void refreshAccess()
+  }, [refreshAccess])
 
   const changeAccess = useCallback(
     async (next: 'all' | 'paid') => {
       const prev = access
       setAccess(next)
+      setCapMessage(null)
       try {
-        await dsaApi.community.setAccess(next, token)
+        showStatus(await dsaApi.community.setAccess({ access: next }, token))
       } catch (e) {
         setAccess(prev)
         setError(
@@ -1671,8 +1706,31 @@ const cancelRecording = useCallback(() => {
         )
       }
     },
-    [access, token],
+    [access, token, showStatus],
   )
+
+  const saveCap = useCallback(async () => {
+    setCapMessage(null)
+    let cap: number | null = null
+    if (!capUnlimited) {
+      const n = Number(capDraft)
+      if (capDraft.trim() === '' || !Number.isInteger(n) || n < 0 || n > 1000000) {
+        setCapMessage({ ok: false, text: 'Enter a whole number from 0 to 1,000,000, or choose Unlimited.' })
+        return
+      }
+      cap = n
+    }
+    setCapSaving(true)
+    try {
+      const a = await dsaApi.community.setAccess({ freeStudentCap: cap }, token)
+      showStatus(a)
+      setCapMessage({ ok: true, text: cap == null ? 'No limit on free students.' : `Free students limited to ${cap}.` })
+    } catch (e) {
+      setCapMessage({ ok: false, text: e instanceof Error ? e.message : 'Could not save the limit.' })
+    } finally {
+      setCapSaving(false)
+    }
+  }, [capDraft, capUnlimited, token, showStatus])
 
   // Post a poll — plain, or marked as a quiz with a correct option.
   const sendPoll = useCallback(async () => {
@@ -1880,6 +1938,7 @@ const cancelRecording = useCallback(() => {
 
 
 const loadChannels = useCallback(async () => {
+  if (blockedRef.current) return
   let list: CommunityChannel[]
 
   try {
@@ -1939,6 +1998,29 @@ const loadChannels = useCallback(async () => {
     const poll = setInterval(() => { if (!document.hidden) loadChannels() }, 30000)
     return () => clearInterval(poll)
   }, [loadChannels])
+
+  // Access withdrawn, or Community Access changed: ask the server again.
+  useEffect(() => {
+    const s = socketRef.current
+    if (!s) return
+    const onAccessChange = () => void refreshAccess()
+    s.on('community:revoked', onAccessChange)
+    s.on('channels:changed', onAccessChange)
+    return () => {
+      s.off('community:revoked', onAccessChange)
+      s.off('channels:changed', onAccessChange)
+    }
+  }, [refreshAccess, authToken])
+
+  // Let back in (e.g. the Community went Free again): load the rooms now.
+  useEffect(() => {
+    if (gate?.allowed && wasBlockedRef.current) {
+      wasBlockedRef.current = false
+      void loadChannels()
+      void load(true)
+      void loadSettings()
+    }
+  }, [gate, loadChannels, load, loadSettings])
 
   // Removed from a room while it was open: the server says so at once.
   useEffect(() => {
@@ -2258,8 +2340,11 @@ const loadChannels = useCallback(async () => {
                 {categoryLabel(active.category)}
               </span>
             )}
-            <span className='rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-600'>
-              {access === 'all' ? 'All students' : 'Paid only'}
+            <span
+              className='rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-600'
+              title='Community Access applies to every room'
+            >
+              Community: {access === 'all' ? 'Free' : 'Paid'}
             </span>
           </div>
         </div>
@@ -2286,25 +2371,93 @@ const loadChannels = useCallback(async () => {
           </div>
         </div>
 
-        {/* Who may open the Community at all */}
-        <div>
-          <p className='mb-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400'>
-            Access permission
+        {/* Who may open the Community at all: every room, not just this one */}
+        <div className='rounded-2xl border border-slate-100 p-3'>
+          <p className='mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400'>
+            Community Access: Free / Paid
           </p>
-          <div className='grid grid-cols-2 gap-2'>
+          <p className='mb-2 text-[10px] font-medium leading-4 text-slate-500'>
+            Applies to the whole Community. <b>Paid</b>: only students with a
+            confirmed, current plan (not expired, not switched off, not a
+            receipt still under review). <b>Free</b>: paid students plus free
+            students, up to the limit below. Staff and tutors are not affected.
+          </p>
+          <div className='grid grid-cols-2 gap-2' role='group' aria-label='Community Access'>
             {(['all', 'paid'] as const).map((a) => (
               <button
                 key={a}
                 onClick={() => changeAccess(a)}
+                aria-pressed={access === a}
                 className={`h-10 rounded-xl border text-[10px] font-black uppercase transition-colors ${
                   access === a
                     ? 'border-[#002EFF] bg-blue-50 text-[#002EFF]'
                     : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
                 }`}
               >
-                {a === 'all' ? 'All students' : 'Paid only ⭐'}
+                {a === 'all' ? 'Free' : 'Paid ⭐'}
               </button>
             ))}
+          </div>
+
+          {/* The free-student cap */}
+          <div className='mt-3 border-t border-slate-100 pt-3'>
+            <p className='mb-1 text-[9px] font-black uppercase tracking-widest text-slate-400'>
+              Free-student limit
+            </p>
+            {capInfo && (
+              <p className='mb-2 text-[11px] font-bold text-slate-600' role='status'>
+                {capInfo.freeStudents ?? 0} free student{capInfo.freeStudents === 1 ? '' : 's'} in
+                {capInfo.freeStudentCap == null
+                  ? ' · no limit'
+                  : ` · limit ${capInfo.freeStudentCap} · ${
+                      capInfo.capacityAvailable
+                        ? `${capInfo.placesLeft} place${capInfo.placesLeft === 1 ? '' : 's'} left`
+                        : 'full: new free students are turned away'
+                    }`}
+                {access === 'paid' && ' (not in use while Community Access is Paid)'}
+              </p>
+            )}
+            <div className='flex flex-wrap items-center gap-2'>
+              <input
+                type='number'
+                min={0}
+                max={1000000}
+                step={1}
+                inputMode='numeric'
+                value={capDraft}
+                onChange={(e) => setCapDraft(e.target.value)}
+                disabled={capUnlimited}
+                aria-label='Free-student limit'
+                className='h-10 w-28 rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-bold outline-none focus:border-[#002EFF]/40 disabled:bg-slate-50 disabled:text-slate-400'
+              />
+              <label className='flex items-center gap-1.5 text-[10px] font-bold text-slate-500'>
+                <input
+                  type='checkbox'
+                  checked={capUnlimited}
+                  onChange={(e) => setCapUnlimited(e.target.checked)}
+                />
+                Unlimited
+              </label>
+              <button
+                onClick={saveCap}
+                disabled={capSaving}
+                className='h-10 rounded-xl bg-[#002EFF] px-3 text-[10px] font-black uppercase text-white hover:bg-blue-700 disabled:opacity-50'
+              >
+                {capSaving ? <Loader2 size={12} className='animate-spin' /> : 'Save limit'}
+              </button>
+            </div>
+            <p className='mt-1 text-[10px] font-medium text-slate-400'>
+              Lowering it never removes anyone already in; it only stops new
+              free students until there is room.
+            </p>
+            {capMessage && (
+              <p
+                role={capMessage.ok ? 'status' : 'alert'}
+                className={`mt-1 text-[10px] font-bold ${capMessage.ok ? 'text-emerald-600' : 'text-rose-600'}`}
+              >
+                {capMessage.text}
+              </p>
+            )}
           </div>
         </div>
 
@@ -2561,6 +2714,31 @@ const loadChannels = useCallback(async () => {
       </div>
     </div>
   )
+
+  if (mode === 'student' && gate && !gate.allowed) {
+    return (
+      <div className='flex min-h-[50vh] items-center justify-center p-4'>
+        <div className='max-w-md rounded-3xl border border-slate-100 bg-white p-8 text-center shadow-sm' role='status'>
+          <Lock size={24} className='mx-auto text-[#002EFF]' />
+          <p className='mt-3 text-[15px] font-black text-slate-900'>
+            {gate.reason === 'cap_reached'
+              ? 'The Community is full right now'
+              : gate.reason === 'paid_only'
+                ? 'The Community is for paid students'
+                : 'The Community is not available'}
+          </p>
+          <p className='mt-2 text-[12px] font-medium leading-5 text-slate-500'>
+            {gate.message || 'Your account cannot open the Community at the moment.'}
+          </p>
+          {gate.reason !== 'account' && (
+            <p className='mt-3 text-[11px] font-bold text-slate-400'>
+              A current paid plan always includes the Community.
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

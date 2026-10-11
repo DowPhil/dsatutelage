@@ -35,6 +35,7 @@ import {
   type StudentDetailsResponse,
 } from '@/lib/admin-api'
 import ChangeRequestsPanel from './ChangeRequestsPanel'
+import { dsaApi } from '@/lib/api'
 import { categoryLabel } from '@/lib/coursesStore'
 import type { CourseCategory } from '@/lib/types'
 import {
@@ -104,8 +105,45 @@ function mapStudent(
 /* ------------------------------------------------------------------ */
 /* Main StudentRoster Component                                       */
 /* ------------------------------------------------------------------ */
-export default function StudentRoster() {
+/**
+ * What the viewer may do. The admin dashboard passes nothing (everything);
+ * the staff dashboard passes what the staff role's permissions allow. The
+ * server checks every one of these again.
+ */
+export interface StudentRosterAccess {
+  canCreate: boolean
+  canEdit: boolean
+  canChangeStatus: boolean
+  canDelete: boolean
+  canExport: boolean
+  canSendActivation: boolean
+  canReviewChanges: boolean
+  canSeePlans: boolean
+}
+
+const FULL_ACCESS: StudentRosterAccess = {
+  canCreate: true,
+  canEdit: true,
+  canChangeStatus: true,
+  canDelete: true,
+  canExport: true,
+  canSendActivation: true,
+  canReviewChanges: true,
+  canSeePlans: true,
+}
+
+export default function StudentRoster({
+  access,
+  scopeNote,
+}: {
+  access?: Partial<StudentRosterAccess>
+  /** One line under the title, e.g. which students this roster covers. */
+  scopeNote?: string
+} = {}) {
+  const can: StudentRosterAccess = { ...FULL_ACCESS, ...access }
   const [loading, setLoading] = useState(true)
+  // The last load failed (shown with a retry, not as an empty roster).
+  const [loadError, setLoadError] = useState('')
   const [students, setStudents] = useState<ExtendedStudentPerson[]>([])
   const [source, setSource] = useState<'server' | 'local'>('local')
   const [searchQuery, setSearchQuery] = useState('')
@@ -172,18 +210,28 @@ export default function StudentRoster() {
 
   // Plans for the "plan paid for" filter. Staff without plan access simply
   // don't get the plan dropdown.
+  // Staff who cannot manage plans see the active plans (the server filters by
+  // plan for them too).
   useEffect(() => {
     let cancelled = false
-    adminApi
-      .getPlans()
-      .then((res) => {
-        if (!cancelled && Array.isArray(res?.data)) setPlans(res.data)
+    const load: Promise<{ id: string; name: string; active?: boolean }[]> = can.canSeePlans
+      ? adminApi.getPlans().then((res) => (Array.isArray(res?.data) ? res.data : []))
+      : dsaApi.plans.list().then((rows) =>
+          rows.map((p) => ({
+            id: String(p.id ?? p._id ?? ''),
+            name: `${String(p.name ?? 'Plan')}${p.track ? ` — ${String(p.track).toUpperCase()}` : ''}`,
+            active: true,
+          })),
+        )
+    load
+      .then((rows) => {
+        if (!cancelled) setPlans(rows.filter((p) => p.id))
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [can.canSeePlans])
   const [bulkSending, setBulkSending] = useState(false)
   const [bulkMsg, setBulkMsg] = useState('')
   // Which unverified students the admin ticked, to email just them.
@@ -253,6 +301,7 @@ export default function StudentRoster() {
       } = {},
     ) => {
     setLoading(true)
+    setLoadError('')
     try {
       const response = await adminApi.getUsers({
         role: 'student',
@@ -303,7 +352,8 @@ export default function StudentRoster() {
       } else {
         throw new Error('No server data structure matched.')
       }
-    } catch {
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Could not load students.')
       // Local fallback in case server fails
       const localFallback: ExtendedStudentPerson[] = []
       setStudents(
@@ -567,6 +617,7 @@ export default function StudentRoster() {
         </div>
 
         <div className='flex flex-wrap items-center gap-2'>
+          {can.canExport && (
           <button
             type='button'
             onClick={exportStudents}
@@ -581,14 +632,20 @@ export default function StudentRoster() {
             )}
             Export Excel
           </button>
+          )}
+          {can.canCreate && (
           <button
             onClick={() => setShowAddModal(true)}
             className='flex items-center gap-1.5 px-3.5 py-2 bg-[#002EFF] text-white rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-blue-700 transition-all shadow-md shadow-blue-200 active:scale-95'
           >
             <Plus size={14} /> Add Student
           </button>
+          )}
         </div>
       </div>
+      {scopeNote && (
+        <p className='-mt-2 text-[11px] font-bold text-slate-400'>{scopeNote}</p>
+      )}
 
       {/* Search Bar */}
       <form onSubmit={handleSearch} className='flex items-center gap-2'>
@@ -614,11 +671,13 @@ export default function StudentRoster() {
       </form>
 
       {/* Students asking to move class / programme — approve here */}
-      <ChangeRequestsPanel
-        onDecided={() =>
-          fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, extraFilters)
-        }
-      />
+      {can.canReviewChanges && (
+        <ChangeRequestsPanel
+          onDecided={() =>
+            fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, extraFilters)
+          }
+        />
+      )}
 
       {/* Filters — by programme and by class/level */}
       <div className='flex flex-wrap items-center gap-2'>
@@ -754,7 +813,7 @@ export default function StudentRoster() {
             ))}
           </select>
         )}
-        {statusFilter === 'pending_otp' && students.length > 0 && (
+        {can.canSendActivation && statusFilter === 'pending_otp' && students.length > 0 && (
           <>
             <button
               type='button'
@@ -794,6 +853,20 @@ export default function StudentRoster() {
       {loading ? (
         <div className='py-12 flex justify-center bg-white rounded-2xl border border-slate-100'>
           <Loader2 className='animate-spin text-[#002EFF]' />
+        </div>
+      ) : loadError ? (
+        <div className='bg-white rounded-2xl border border-rose-100 p-8 text-center' role='alert'>
+          <p className='text-xs font-black text-rose-600'>The student list could not be loaded</p>
+          <p className='mt-1 text-[11px] font-medium text-slate-500'>{loadError}</p>
+          <button
+            type='button'
+            onClick={() =>
+              fetchStudents(searchQuery, currentPage, programmeFilter, classFilter, accessFilter, statusFilter, extraFilters)
+            }
+            className='mt-3 h-9 px-4 rounded-lg bg-[#002EFF] text-white text-[10px] font-black uppercase hover:bg-blue-700'
+          >
+            Retry
+          </button>
         </div>
       ) : students.length === 0 ? (
         <div className='bg-white rounded-2xl border border-slate-100 p-10 text-center'>
@@ -879,10 +952,12 @@ export default function StudentRoster() {
                           className='text-slate-400 shrink-0'
                         />
                         <TrackOverride
+                          disabled={!can.canEdit}
                           studentId={p.id || p.key}
                           current={p.examTrack || p.extra}
                         />
                         <DepartmentOverride
+                          disabled={!can.canEdit}
                           studentId={p.id || p.key}
                           current={p.department}
                         />
@@ -907,7 +982,7 @@ export default function StudentRoster() {
                         />
                       ) : (
                         <>
-                          {isSuspended ? (
+                          {!can.canChangeStatus ? null : isSuspended ? (
                             <button
                               onClick={() =>
                                 setActionModal({
@@ -936,6 +1011,7 @@ export default function StudentRoster() {
                               <UserX size={14} />
                             </button>
                           )}
+                          {can.canDelete && (
                           <button
                             onClick={() =>
                               setActionModal({
@@ -949,6 +1025,7 @@ export default function StudentRoster() {
                           >
                             <Trash2 size={14} />
                           </button>
+                          )}
                         </>
                       )}
                     </div>
@@ -1011,10 +1088,12 @@ export default function StudentRoster() {
                   <span className='col-span-2 text-[10px] font-bold text-slate-500 flex flex-wrap items-center gap-1'>
                     <BookOpen size={10} className='text-slate-400' />
                     <TrackOverride
+                      disabled={!can.canEdit}
                       studentId={p.id || p.key}
                       current={p.examTrack || p.extra}
                     />
                     <DepartmentOverride
+                      disabled={!can.canEdit}
                       studentId={p.id || p.key}
                       current={p.department}
                     />
@@ -1050,7 +1129,7 @@ export default function StudentRoster() {
                       />
                     ) : (
                       <>
-                        {isSuspended ? (
+                        {!can.canChangeStatus ? null : isSuspended ? (
                           <button
                             onClick={() =>
                               setActionModal({
@@ -1079,6 +1158,7 @@ export default function StudentRoster() {
                             <UserX size={14} />
                           </button>
                         )}
+                        {can.canDelete && (
                         <button
                           onClick={() =>
                             setActionModal({
@@ -1092,6 +1172,7 @@ export default function StudentRoster() {
                         >
                           <Trash2 size={14} />
                         </button>
+                        )}
                       </>
                     )}
                   </span>
@@ -1122,6 +1203,9 @@ export default function StudentRoster() {
       {selectedStudent && (
         <StudentDetailsModal
           student={selectedStudent}
+          canChangeStatus={can.canChangeStatus}
+          canDelete={can.canDelete}
+          canSendActivation={can.canSendActivation}
           onClose={() => setSelectedStudent(null)}
           onStatusChangeRequest={(student, targetStatus) =>
             setActionModal({
@@ -1484,8 +1568,14 @@ function StudentDetailsModal({
   onStatusChangeRequest,
   onDeleteRequest,
   isLoading,
+  canChangeStatus = true,
+  canDelete = true,
+  canSendActivation = true,
 }: {
   student: ExtendedStudentPerson
+  canChangeStatus?: boolean
+  canDelete?: boolean
+  canSendActivation?: boolean
   onClose: () => void
   onStatusChangeRequest: (
     person: ExtendedStudentPerson,
@@ -1580,7 +1670,7 @@ function StudentDetailsModal({
   return (
     <div className='fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200'>
       <div className='w-full max-w-lg max-h-[94dvh] overflow-y-auto bg-white rounded-3xl shadow-2xl border border-slate-100'>
-        {accountStatus === 'pending_otp' && student.id && (
+        {canSendActivation && accountStatus === 'pending_otp' && student.id && (
           <VerificationPanel id={student.id} email={student.email} />
         )}
 
@@ -1858,6 +1948,7 @@ function StudentDetailsModal({
           )}
 
           <div className='flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 pt-4 border-t border-slate-100'>
+            {canDelete ? (
             <button
               type='button'
               onClick={() => onDeleteRequest(student)}
@@ -1866,9 +1957,12 @@ function StudentDetailsModal({
             >
               <Trash2 size={14} /> Soft Delete
             </button>
+            ) : (
+              <span />
+            )}
 
             <div className='flex items-center gap-2 w-full sm:w-auto'>
-              {isSuspended ? (
+              {!canChangeStatus ? null : isSuspended ? (
                 <button
                   type='button'
                   onClick={() => onStatusChangeRequest(student, 'active')}
