@@ -894,6 +894,27 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
                   : 'Here is your result. Download the report to keep a copy.'}
               </p>
             </div>
+            {/* Actions up top, so they are seen without scrolling */}
+            <div
+              className={`grid gap-3 ${canShowCorrections ? 'sm:grid-cols-2' : ''}`}
+            >
+              {canShowCorrections && (
+                <button
+                  onClick={() => setShowCorrections(true)}
+                  className='w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-[#002EFF] text-white font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 active:scale-[0.98] transition-all'
+                >
+                  <BookOpenCheck size={15} /> View corrections
+                </button>
+              )}
+
+              <button
+                onClick={downloadResult}
+                className='w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-slate-100 text-slate-700 font-black text-[11px] uppercase tracking-wide hover:bg-slate-200'
+              >
+                <Download size={15} /> Download report
+              </button>
+            </div>
+
             {/* Score + performance analysis */}
             <div className='bg-white rounded-3xl shadow-sm overflow-hidden'>
               <div className='p-7 text-center'>
@@ -960,22 +981,6 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
                 }}
               />
             )}
-
-            {canShowCorrections && (
-              <button
-                onClick={() => setShowCorrections(true)}
-                className='w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-[#002EFF] text-white font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 active:scale-[0.98] transition-all'
-              >
-                <BookOpenCheck size={15} /> View corrections
-              </button>
-            )}
-
-            <button
-              onClick={downloadResult}
-              className='w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-slate-100 text-slate-700 font-black text-[11px] uppercase tracking-wide hover:bg-slate-200'
-            >
-              <Download size={15} /> Download report
-            </button>
 
             {/* Join DSA → homepage */}
             <div className='rounded-3xl bg-[#002EFF] p-6 text-white text-center'>

@@ -121,4 +121,15 @@ describe('Secretary roster filters sent to the server', () => {
       { search: 'ada', department: 'science', courseId: 'c1', examTrack: 'afterschool', learningMode: 'online' },
     )
   })
+
+  it('plan: Free, paid / unpaid and a specific plan map to the server filters', () => {
+    assert.deepEqual(staffRosterParams({ ...none, plan: 'all' }), {})
+    assert.deepEqual(staffRosterParams({ ...none, plan: 'free' }), { accessLevel: 'free' })
+    assert.deepEqual(staffRosterParams({ ...none, plan: 'verified' }), { paid: 'verified' })
+    assert.deepEqual(staffRosterParams({ ...none, plan: 'unpaid' }), { paid: 'unpaid' })
+    assert.deepEqual(
+      staffRosterParams({ ...none, plan: '64b0c0ffee0000000000abcd', department: 'art', courseId: 'c2', search: 'bo' }),
+      { planId: '64b0c0ffee0000000000abcd', department: 'art', courseId: 'c2', search: 'bo' },
+    )
+  })
 })

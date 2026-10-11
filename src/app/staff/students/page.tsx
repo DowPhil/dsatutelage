@@ -208,6 +208,16 @@ export default function StaffStudentsPage() {
   const [courseOptions, setCourseOptions] =
     useState<{ id: string; label: string }[]>([])
 
+  const [planFilter, setPlanFilter] =
+    useState('all')
+
+  const [planOptions, setPlanOptions] =
+    useState<{ id: string; label: string }[]>([])
+
+  // Only admins see free accounts here, so only they get the Free option.
+  const [isAdmin, setIsAdmin] =
+    useState(false)
+
   // Export needs students.manage (checked again by the server).
   const [canExport, setCanExport] =
     useState(false)
@@ -244,6 +254,7 @@ export default function StaffStudentsPage() {
     status: statusFilter,
     department: departmentFilter,
     courseId: courseFilter,
+    plan: planFilter,
   })
   const rosterKey = JSON.stringify(rosterParams)
 
@@ -314,10 +325,30 @@ export default function StaffStudentsPage() {
       .catch(() => {
         /* no course filter without course access */
       })
+    // Plans for the plan filter: every plan for staff who manage payments,
+    // otherwise the active ones.
+    dsaApi.plans
+      .adminList(token)
+      .catch(() => dsaApi.plans.list(token))
+      .then((rows) => {
+        setPlanOptions(
+          rows
+            .map((p) => ({
+              id: sstr(p.id ?? p._id),
+              label: `${sstr(p.name)}${p.track ? ` — ${sstr(p.track).toUpperCase()}` : ''}${p.active === false ? ' (inactive)' : ''}`,
+            }))
+            .filter((p) => p.id)
+            .sort((a, b) => a.label.localeCompare(b.label)),
+        )
+      })
+      .catch(() => {
+        /* the paid / unpaid choices still work without the plan list */
+      })
     dsaApi.auth
       .getProfile(token)
       .then((me) => {
         const profile = (me ?? {}) as { permissions?: string[]; role?: string }
+        setIsAdmin(profile.role === 'admin')
         setCanExport(
           profile.role === 'admin' ||
             (profile.permissions ?? []).includes('students.manage'),
@@ -583,6 +614,7 @@ export default function StaffStudentsPage() {
     setStatusFilter('all')
     setDepartmentFilter('all')
     setCourseFilter('all')
+    setPlanFilter('all')
   }
 
   const hasFilters = Object.keys(rosterParams).length > 0
@@ -690,10 +722,10 @@ export default function StaffStudentsPage() {
 
         <div className="flex flex-col gap-4">
 
-          <div className="flex flex-col gap-3 lg:flex-row">
+          <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap">
 
             {/* Search */}
-            <div className="relative flex-1">
+            <div className="relative flex-1 lg:min-w-[18rem]">
               <Search
                 size={18}
                 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
@@ -826,6 +858,36 @@ export default function StaffStudentsPage() {
                 ))}
               </select>
             )}
+
+            {/* Plan */}
+            <select
+              value={planFilter}
+              onChange={(event) =>
+                setPlanFilter(event.target.value)
+              }
+              aria-label="Plan"
+              className="h-12 rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#002EFF]/40 focus:bg-white focus:ring-4 focus:ring-[#002EFF]/5 lg:w-56"
+            >
+              <option value="all">
+                All Plans
+              </option>
+              {isAdmin && (
+                <option value="free">
+                  Free
+                </option>
+              )}
+              <option value="verified">
+                Any paid plan
+              </option>
+              <option value="unpaid">
+                No confirmed payment
+              </option>
+              {planOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
 
           </div>
 
