@@ -464,6 +464,7 @@ import {
   CalendarCheck,
   HelpCircle,
   HardDrive,
+  BarChart3,
 } from 'lucide-react'
 
 // UI Components
@@ -485,6 +486,8 @@ import TimetableEditor from '@/components/dashboard/TimetableEditor'
 import Announcements from '@/components/dashboard/Announcements'
 import Assessments from './components/Assessments'
 import CommunityModeration from './components/CommunityModeration'
+import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
+import StudentReports from '@/components/dashboard/StudentReports'
 import PaymentsAdmin from './components/PaymentsAdmin'
 import RolesPermissions from './components/RolesPermissions'
 import SupportTickets from './components/SupportTickets'
@@ -505,6 +508,7 @@ type AdminTab =
   | 'question-bank'
   | 'library'
   | 'attendance'
+  | 'reports'
   | 'timetable'
   | 'broadcast'
   | 'community'
@@ -518,6 +522,20 @@ export default function AdminAdmin() {
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false)
   const [activeTab, setActiveTab] = useTabState<AdminTab>('dashboard')
   const router = useRouter()
+
+  // Community unread badge, counted with the admin token (as the Community
+  // itself is — see CommunityModeration), so both share one socket.
+  const [adminToken] = useState<string | undefined>(() =>
+    typeof window === 'undefined'
+      ? undefined
+      : localStorage.getItem('admin_token') ||
+        localStorage.getItem('token') ||
+        undefined,
+  )
+  const communityUnread = useCommunityUnread(
+    activeTab === 'community',
+    adminToken,
+  )
 
   // End the admin session and return to sign-in.
   const signOut = useCallback(() => {
@@ -571,6 +589,7 @@ export default function AdminAdmin() {
           id: 'community' as AdminTab,
           label: 'Community',
           icon: MessagesSquare,
+          badge: communityUnread,
         },
         { id: 'students' as AdminTab, label: 'Students', icon: Users },
         { id: 'notifications' as AdminTab, label: 'Notifications', icon: Bell },
@@ -597,6 +616,11 @@ export default function AdminAdmin() {
           id: 'attendance' as AdminTab,
           label: 'Take Attendance',
           icon: CalendarCheck,
+        },
+        {
+          id: 'reports' as AdminTab,
+          label: 'Attendance & Performance',
+          icon: BarChart3,
         },
         {
           id: 'timetable' as AdminTab,
@@ -668,6 +692,8 @@ export default function AdminAdmin() {
         return <CreateGuardian />
       case 'attendance':
         return <TakeAttendance />
+      case 'reports':
+        return <StudentReports token={adminToken} />
       case 'timetable':
         return <TimetableEditor />
       case 'broadcast':
@@ -738,6 +764,14 @@ export default function AdminAdmin() {
                 <span className='text-[11px] uppercase tracking-wider font-bold'>
                   {item.label}
                 </span>
+                {'badge' in item && item.badge ? (
+                  <span
+                    aria-label={`${item.badge} unread`}
+                    className='ml-auto min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-black flex items-center justify-center'
+                  >
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>

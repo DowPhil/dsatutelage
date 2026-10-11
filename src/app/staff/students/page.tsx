@@ -876,6 +876,12 @@ export default function StaffStudentsPage() {
                   Free
                 </option>
               )}
+              <option value="portal">
+                Portal access
+              </option>
+              <option value="tutorial">
+                Tutorial plan
+              </option>
               <option value="verified">
                 Any paid plan
               </option>

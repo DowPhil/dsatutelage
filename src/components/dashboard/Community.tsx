@@ -8,12 +8,14 @@
 //  • Tutors  : text, photo, video, document (pdf/doc) and voice notes.
 //  • Students: text, photo, video and document (pdf/doc) — no voice notes.
 //  • Admin   : read-only moderation — sees every message and can delete any.
+//  • Staff   : take part like members; their role's permissions add leading a
+//              room (announcements.send) and moderating (community.moderate).
 //
 // Files upload straight to Cloudinary from the browser (see lib/cloudinary.ts);
 // only the hosted URL is sent to the API. Messages sync by polling the channel.
 // Role rules are also enforced server-side — this component only shapes the UI.
 
-import { memo, Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Send,
   Image as ImageIcon,
@@ -62,16 +64,16 @@ import { uploadToCloudinary } from '@/lib/cloudinary'
 import {
   type CommunityChannel,
   toChannel,
-  channelsForCategories,
 } from '@/lib/communityChannels'
-import {
-  COURSE_CATEGORIES,
-  categoryLabel,
-  categoriesForStudent,
-} from '@/lib/coursesStore'
+import { COURSE_CATEGORIES, categoryLabel } from '@/lib/coursesStore'
 import type { CourseCategory } from '@/lib/types'
+import { communityUnread } from '@/lib/communityUnread'
+import {
+  useCommunityUnreadFeed,
+  useCommunityUnreadVersion,
+} from './useCommunityUnread'
 
-type Mode = 'tutor' | 'student' | 'admin'
+type Mode = 'tutor' | 'student' | 'admin' | 'staff'
 type MsgType = 'text' | 'image' | 'video' | 'audio' | 'file' | 'poll'
 
 export interface PollOption {
@@ -218,6 +220,7 @@ const roleLabel = (r: string): string => {
   if (k === 'tutor') return 'Tutor'
   if (k === 'student') return 'Student'
   if (k.includes('admin')) return 'Admin'
+  if (k === 'staff') return 'Staff'
   return r || 'Member'
 }
 
@@ -225,6 +228,7 @@ const roleTint = (r: string): string => {
   const k = r.toLowerCase()
   if (k === 'tutor') return 'bg-blue-50 text-[#002EFF]'
   if (k.includes('admin')) return 'bg-amber-50 text-amber-600'
+  if (k === 'staff') return 'bg-emerald-50 text-emerald-700'
   return 'bg-slate-100 text-slate-500'
 }
 
@@ -316,10 +320,13 @@ function DeptChips({
 export default function Community({
   mode,
   token,
+  permissions = [],
 }: {
   mode: Mode
   /** Explicit bearer token — admin passes its admin token; members omit it. */
   token?: string
+  /** Staff only: their role's permissions (the server checks them too). */
+  permissions?: string[]
 }) {
   const [messages, setMessages] = useState<Msg[]>([])
   const [loading, setLoading] = useState(true)
@@ -374,7 +381,8 @@ export default function Community({
 
   // Channels — General + one per programme (JAMB/Post-UTME/WAEC by department,
   // etc.). Students see General + their programme's; tutors/admin see them all.
-  const [channels, setChannels] = useState<CommunityChannel[]>([])
+  // The rooms as the server lists them; `channels` (below) adds live counts.
+  const [rawChannels, setChannels] = useState<CommunityChannel[]>([])
   const [activeChannel, setActiveChannel] = useState('general')
   const [membersOpen, setMembersOpen] = useState(false)
   const [members, setMembers] = useState<
@@ -464,16 +472,27 @@ export default function Community({
 
   // Everyone can post. Tutors and admins additionally get voice notes; admins
   // also moderate (delete any message). Students get everything except audio.
+  // Staff get these through their role (mirrors utils/communityRoles on the
+  // server, which enforces them).
+  const staffLeads =
+    mode === 'staff' &&
+    (permissions.includes('announcements.send') ||
+      permissions.includes('community.moderate'))
+  const staffModerates =
+    mode === 'staff' && permissions.includes('community.moderate')
   const canCompose = true
-  const canRecord = mode === 'tutor' || mode === 'admin'
-  const isModerator = mode === 'admin'
-  // Tutors + admins can pin messages and lock the channel (lesson mode).
-  const canManage = mode === 'tutor' || mode === 'admin'
+  const canRecord = mode === 'tutor' || mode === 'admin' || staffLeads
+  const isModerator = mode === 'admin' || staffModerates
+  // Tutors + admins (and staff who lead a room) can pin messages, run polls
+  // and lock the channel (lesson mode).
+  const canManage = mode === 'tutor' || mode === 'admin' || staffLeads
+  // The lock itself is a moderation action for staff.
+  const canLock = mode === 'tutor' || mode === 'admin' || staffModerates
 
   // Channel lock (lesson / broadcast mode): when locked, students cannot post;
   // tutors and admins still can.
   const [locked, setLockedState] = useState(false)
-  const postingBlocked = locked && mode === 'student'
+  const postingBlocked = locked && !canManage
 
   // Identify the current user so their own bubbles align right.
   const me = getUser() as
@@ -483,6 +502,28 @@ export default function Community({
   const myName = str(me?.fullName || (me as { username?: string })?.username)
   // The socket needs the bearer token explicitly (no cookies on a WebSocket).
   const authToken = token || getToken() || ''
+
+  // Unread badges: the shared store (server summary + socket), merged into
+  // the room list for rendering.
+  useCommunityUnreadFeed(authToken)
+  const unreadVersion = useCommunityUnreadVersion()
+  const channels = useMemo(
+    () =>
+      rawChannels.map((c) => {
+        const u = communityUnread.get(c.id)
+        return {
+          ...c,
+          unread: u.unread,
+          mentions: u.mentions,
+          lastMessageAt: u.lastMessageAt ?? c.lastMessageAt ?? null,
+          lastMessageText: u.lastMessageText ?? c.lastMessageText ?? null,
+          lastMessageSender: u.lastMessageSender ?? c.lastMessageSender ?? null,
+        }
+      }),
+    // unreadVersion changes whenever any count does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawChannels, unreadVersion],
+  )
 
   const normalize = useCallback(
     (raw: Record<string, unknown>): Msg => {
@@ -1695,28 +1736,64 @@ const cancelRecording = useCallback(() => {
     [token],
   )
 
-  // Mark everyone else's messages in this channel as seen, once they're loaded.
+  // Is the conversation actually on screen? Side by side with the list from
+  // `md` up; on a phone only once a room is tapped. A hidden tab reads nothing.
+  const [wide, setWide] = useState(false)
+  const [pageVisible, setPageVisible] = useState(true)
   useEffect(() => {
-    const unseen = messages
-      .filter((m) => !m.own && m.id)
-      .map((m) => m.id)
-      .slice(-20)
-    if (!unseen.length) return
-    let cancelled = false
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onWidth = () => setWide(mq.matches)
+    const onVisibility = () => setPageVisible(!document.hidden)
+    onWidth()
+    onVisibility()
+    mq.addEventListener('change', onWidth)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      mq.removeEventListener('change', onWidth)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [])
+  const conversationOnScreen = pageVisible && (wide || pane === 'chat')
+
+  // While a room is on screen its new messages are read as they arrive, so
+  // the unread store leaves it at zero.
+  useEffect(() => {
+    communityUnread.setViewing(conversationOnScreen ? activeChannel : null)
+    return () => communityUnread.setViewing(null)
+  }, [conversationOnScreen, activeChannel])
+
+  // Mark the room read up to its newest message — only once it is loaded and
+  // on screen. Opening the Community (the room list) marks nothing.
+  const lastMarkedRef = useRef('')
+  useEffect(() => {
+    if (!conversationOnScreen || msgChannelRef.current !== activeChannel) return
+    const others = messages.filter((m) => !m.own && m.id)
+    if (!others.length) return
+    const newest = others.reduce((a, b) => (b.createdAt > a.createdAt ? b : a))
+    // Reactions and edits change `messages` too; only a newer message (or
+    // coming back to the room) needs another request.
+    const mark = `${activeChannel}:${newest.id}`
+    if (lastMarkedRef.current === mark) return
+    // The last few loaded ids also refresh their "seen by" counts.
+    const unseen = others.map((m) => m.id).slice(-20)
+    const channel = activeChannel
     const id = setTimeout(() => {
+      lastMarkedRef.current = mark
+      communityUnread.markRead(channel)
       dsaApi.community
-        .markRead(activeChannel, unseen, token)
-        .catch(() => {})
-        .finally(() => {
-          if (cancelled) return
+        .markRead(channel, unseen, token, newest.id)
+        .catch(() => {
+          lastMarkedRef.current = ''
         })
     }, 600)
-    return () => {
-      cancelled = true
-      clearTimeout(id)
-    }
-    // Re-runs when the visible set changes; the server ignores duplicates.
-  }, [messages, activeChannel, token])
+    return () => clearTimeout(id)
+  }, [messages, activeChannel, token, conversationOnScreen])
+
+  // Leaving the screen (tab hidden, back to the list) means the next visit
+  // marks again.
+  useEffect(() => {
+    if (!conversationOnScreen) lastMarkedRef.current = ''
+  }, [conversationOnScreen])
 
   // Lock / unlock the channel (tutor / admin) — optimistic with rollback.
   const toggleLock = useCallback(async () => {
@@ -1787,8 +1864,6 @@ const cancelRecording = useCallback(() => {
   // }, [mode, token])
 
 
-  const tutorCategoriesRef = useRef<string[] | null>(null)
-
 const loadChannels = useCallback(async () => {
   let list: CommunityChannel[]
 
@@ -1811,48 +1886,23 @@ const loadChannels = useCallback(async () => {
     return
   }
 
-  let visible = list
-
-  if (mode === 'student') {
-    visible = channelsForCategories(
-      list,
-      categoriesForStudent(getUser()),
-    )
-  } else if (mode === 'tutor') {
-    let cats = tutorCategoriesRef.current
-
-    if (cats === null) {
-      try {
-        const courses = (await dsaApi.courses.list(
-          { tutorId: 'me' },
-          token,
-        )) as Record<string, unknown>[]
-
-        cats = [
-          ...new Set(
-            courses
-              .map((c) => String(c.category ?? ''))
-              .filter(Boolean),
-          ),
-        ]
-
-        tutorCategoriesRef.current = cats
-      } catch {
-        cats = []
-      }
-    }
-
-    if (cats.length) {
-      visible = channelsForCategories(list, cats)
-    }
-  }
+  // The server already lists exactly the rooms this person may open (by
+  // track, department, the courses a tutor teaches, a staff member's role),
+  // and authorises every call against the same rule — so show that list as
+  // it is. Narrowing it here left rooms whose unread badge could never clear.
+  const visible = list
 
   setChannels((prev) => {
+    const same = (a: CommunityChannel, b?: CommunityChannel) =>
+      !!b &&
+      a.id === b.id &&
+      a.name === b.name &&
+      !!a.muted === !!b.muted &&
+      (a.departments ?? []).join() === (b.departments ?? []).join() &&
+      (a.tutors ?? []).join() === (b.tutors ?? []).join()
     if (
       prev.length === visible.length &&
-      prev.every(
-        (channel, index) => channel.id === visible[index]?.id,
-      )
+      prev.every((channel, index) => same(channel, visible[index]))
     ) {
       return prev
     }
@@ -1863,7 +1913,7 @@ const loadChannels = useCallback(async () => {
   setActiveChannel((cur) =>
     visible.some((c) => c.id === cur) ? cur : 'general',
   )
-}, [mode, token])
+}, [token])
 
 
   // Unread counts ride along with the channel list, so refresh it on the same
@@ -2046,6 +2096,7 @@ const loadChannels = useCallback(async () => {
   const setMute = useCallback(
     async (channelId: string, minutes?: number) => {
       // Optimistic: the badge should go quiet the moment you ask.
+      communityUnread.setMuted(channelId, minutes !== 0)
       setChannels((cur) =>
         cur.map((c) =>
           c.id === channelId
@@ -2105,7 +2156,7 @@ const loadChannels = useCallback(async () => {
   const active =
     channels.find((c) => c.id === activeChannel) ??
     ({ id: 'general', name: 'General', kind: 'general' } as CommunityChannel)
-  const canManageMembers = mode === 'tutor' || mode === 'admin'
+  const canManageMembers = mode === 'tutor' || mode === 'admin' || staffModerates
   const isAdmin = mode === 'admin'
 
   // The pane shown on a phone: the pod list first, then the conversation you
@@ -2403,6 +2454,7 @@ const loadChannels = useCallback(async () => {
             const groups = [
               { label: 'Admins', rows: shown.filter((m) => m.role.toLowerCase().includes('admin')) },
               { label: 'Tutors', rows: shown.filter((m) => m.role.toLowerCase() === 'tutor') },
+              { label: 'Staff', rows: shown.filter((m) => m.role.toLowerCase() === 'staff') },
               { label: 'Students', rows: shown.filter((m) => m.role.toLowerCase() === 'student') },
             ].filter((g) => g.rows.length)
             if (!groups.length)
@@ -2676,7 +2728,7 @@ const loadChannels = useCallback(async () => {
             >
               <Bell size={15} />
             </HeaderButton>
-            {canManage && (
+            {canLock && (
               <HeaderButton
                 on={locked}
                 onClick={toggleLock}

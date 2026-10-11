@@ -453,6 +453,7 @@ import CourseMaterials from '@/components/dashboard/CourseMaterials'
 import Assignments from '@/components/dashboard/Assignments'
 import Gradebook from '@/components/dashboard/Gradebook'
 import Analytics from '@/components/dashboard/Analytics'
+import StudentReports from '@/components/dashboard/StudentReports'
 import Announcements from '@/components/dashboard/Announcements'
 import Community from '@/components/dashboard/Community'
 import QuestionBank from '@/components/dashboard/QuestionBank'
@@ -1473,6 +1474,11 @@ const NAV: NavGroup[] = [
         label: 'Analytics',
         icon: BarChart3,
       },
+      {
+        key: 'reports',
+        label: 'Attendance & Performance',
+        icon: CalendarCheck,
+      },
     ],
   },
 
@@ -2156,6 +2162,10 @@ export default function TutorDashboard() {
         <Analytics
           mode="tutor"
         />
+      )}
+
+      {view === 'reports' && (
+        <StudentReports scopeNote="Students in the courses you teach, from recorded check-ins and results on your courses' quizzes." />
       )}
 
       {view === 'settings' && (

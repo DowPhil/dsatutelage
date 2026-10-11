@@ -125,6 +125,8 @@ describe('Secretary roster filters sent to the server', () => {
   it('plan: Free, paid / unpaid and a specific plan map to the server filters', () => {
     assert.deepEqual(staffRosterParams({ ...none, plan: 'all' }), {})
     assert.deepEqual(staffRosterParams({ ...none, plan: 'free' }), { accessLevel: 'free' })
+    assert.deepEqual(staffRosterParams({ ...none, plan: 'portal' }), { accessLevel: 'portal' })
+    assert.deepEqual(staffRosterParams({ ...none, plan: 'tutorial' }), { accessLevel: 'tutorial' })
     assert.deepEqual(staffRosterParams({ ...none, plan: 'verified' }), { paid: 'verified' })
     assert.deepEqual(staffRosterParams({ ...none, plan: 'unpaid' }), { paid: 'unpaid' })
     assert.deepEqual(

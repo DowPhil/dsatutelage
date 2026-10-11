@@ -16,6 +16,7 @@ export interface RosterFilters {
   courseId: string
   /**
    * 'all' | 'free' (accessLevel=free; staff only ever see paid students) |
+   * 'portal' / 'tutorial' (access tier) |
    * 'verified' (any confirmed payment) | 'unpaid' (no confirmed payment) |
    * a plan id (paid for that plan).
    */
@@ -31,7 +32,7 @@ export function staffRosterParams(filters: RosterFilters): Record<string, string
   if (filters.department !== 'all') params.department = filters.department
   if (filters.courseId !== 'all') params.courseId = filters.courseId
   const plan = filters.plan ?? 'all'
-  if (plan === 'free') params.accessLevel = 'free'
+  if (plan === 'free' || plan === 'portal' || plan === 'tutorial') params.accessLevel = plan
   else if (plan === 'verified' || plan === 'unpaid') params.paid = plan
   else if (plan !== 'all') params.planId = plan
   return params

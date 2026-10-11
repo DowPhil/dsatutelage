@@ -787,6 +787,27 @@ export const dsaApi = {
         .then((r) => (r as { data?: unknown }).data ?? r),
   },
 
+  // Student attendance & academic performance reports (GET /reports/*),
+  // scoped on the server to what the caller may see.
+  reports: {
+    get: (
+      kind: 'attendance' | 'performance' | 'at-risk' | 'filters',
+      params: Record<string, string> = {},
+      token?: string,
+      signal?: AbortSignal,
+    ) => {
+      const qs = new URLSearchParams(
+        Object.entries(params).filter(([, v]) => v !== '' && v != null),
+      ).toString()
+      return fetch(`${BASE_URL}/reports/${kind}${qs ? `?${qs}` : ''}`, {
+        headers: getHeaders(token),
+        signal,
+      })
+        .then((r) => handleResponse<{ data?: unknown }>(r))
+        .then((r) => (r as { data?: unknown }).data ?? r)
+    },
+  },
+
   staff: {
     // GET /staff/students — the LIVE student roster for staff with
     // students.view / students.manage (admin also allowed). Same shape as the
@@ -1631,6 +1652,22 @@ export const dsaApi = {
         )
         .then((res) => (Array.isArray(res) ? res : (res?.data ?? []))),
 
+    // GET /community/channels/summary — per channel: unread, mentions and
+    // the last message. `channels` limits it to those ids.
+    summary: (token?: string, channels?: string[]) =>
+      fetch(
+        `${BASE_URL}/community/channels/summary${
+          channels?.length
+            ? `?channels=${encodeURIComponent(channels.join(','))}`
+            : ''
+        }`,
+        { headers: getHeaders(token) },
+      )
+        .then((r) =>
+          handleResponse<{ data?: Record<string, Record<string, unknown>> }>(r),
+        )
+        .then((res) => res?.data ?? {}),
+
     // POST /community/channels (admin) — create a channel
     // { name, track?, department? }.
     createChannel: (body: Record<string, unknown>, token?: string) =>
@@ -1764,11 +1801,20 @@ export const dsaApi = {
         .then((r) => (r as { data?: unknown }).data ?? r),
 
     // POST /community/messages/read — mark a batch of messages seen.
-    markRead: (channelId: string, messageIds: string[], token?: string) =>
+    // `upTo` (a message id) also marks every earlier unread message in the
+    // room, so opening a room clears its whole badge.
+    markRead: (
+      channelId: string,
+      messageIds: string[],
+      token?: string,
+      upTo?: string,
+    ) =>
       fetch(`${BASE_URL}/community/messages/read`, {
         method: 'POST',
         headers: getHeaders(token),
-        body: JSON.stringify({ channelId, messageIds }),
+        body: JSON.stringify(
+          upTo ? { channelId, messageIds, upTo } : { channelId, messageIds },
+        ),
       })
         .then((r) => handleResponse<{ data?: { updated?: number } }>(r))
         .then((r) => (r as { data?: { updated?: number } }).data ?? {}),

@@ -794,9 +794,11 @@ function TutorAnnouncements() {
       try {
         const [rows, cs] = await Promise.all([
           dsaApi.announcements.list() as Promise<Record<string, unknown>[]>,
-          dsaApi.courses.list({ tutorId: 'me' }) as Promise<
+          // Staff teach no courses: no course list just means no course
+          // targets, not a reason to drop back to the offline store.
+          (dsaApi.courses.list({ tutorId: 'me' }) as Promise<
             Record<string, unknown>[]
-          >,
+          >).catch(() => [] as Record<string, unknown>[]),
         ])
         setAnnouncements(rows.map(mapAnnouncement))
         setCourses(

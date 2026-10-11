@@ -645,8 +645,17 @@ function mapPerson(
 
 export default function PeopleRoster({
   kind,
+  canCreate = true,
+  canManageAccounts = true,
+  canManageRoles = true,
 }: {
   kind: 'tutors' | 'guardians'
+  /** Staff: shown only with tutors.create / guardians.create. */
+  canCreate?: boolean
+  /** Suspend / activate / delete — admin only by default on staff screens. */
+  canManageAccounts?: boolean
+  /** Staff-role editing — admin only. */
+  canManageRoles?: boolean
 }) {
   const [loading, setLoading] = useState(true)
   const [people, setPeople] = useState<ExtendedDirectoryPerson[]>([])
@@ -834,19 +843,23 @@ export default function PeopleRoster({
 
         <div className='flex items-center gap-2'>
           {/* Create (merged from the old separate screen) */}
-          <button
-            onClick={() => setShowCreate(true)}
-            className='flex items-center gap-1.5 px-3.5 py-2 bg-[#002EFF] text-white rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-blue-700 transition-all shadow-md shadow-blue-200 active:scale-95'
-          >
-            <UserPlus size={14} /> {createLabel}
-          </button>
+          {canCreate && (
+            <button
+              onClick={() => setShowCreate(true)}
+              className='flex items-center gap-1.5 px-3.5 py-2 bg-[#002EFF] text-white rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-blue-700 transition-all shadow-md shadow-blue-200 active:scale-95'
+            >
+              <UserPlus size={14} /> {createLabel}
+            </button>
+          )}
           {/* Modal Trigger */}
-          <button
-            onClick={() => setShowRoleModal(true)}
-            className='flex items-center gap-1.5 px-3.5 py-2 bg-white text-[#002EFF] border border-blue-200 rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-blue-50 transition-all active:scale-95'
-          >
-            <ShieldCheck size={14} /> Upsert Staff Role
-          </button>
+          {canManageRoles && (
+            <button
+              onClick={() => setShowRoleModal(true)}
+              className='flex items-center gap-1.5 px-3.5 py-2 bg-white text-[#002EFF] border border-blue-200 rounded-xl text-[10px] font-black uppercase tracking-wide hover:bg-blue-50 transition-all active:scale-95'
+            >
+              <ShieldCheck size={14} /> Upsert Staff Role
+            </button>
+          )}
         </div>
       </div>
 
@@ -988,6 +1001,7 @@ export default function PeopleRoster({
                     </div>
 
                     {/* Actions Row */}
+                    {canManageAccounts && (
                     <div className='flex items-center justify-end gap-2 pt-1'>
                       {isRowLoading ? (
                         <div className='flex items-center gap-2 text-slate-400 font-bold text-xs py-1 px-2'>
@@ -1027,6 +1041,7 @@ export default function PeopleRoster({
                         </>
                       )}
                     </div>
+                    )}
                   </div>
                 )}
               </div>

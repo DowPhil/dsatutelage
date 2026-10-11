@@ -624,14 +624,20 @@ import {
   BarChart3,
   Loader2,
   ShieldCheck,
-  CheckCircle2,
-  Send,
   LifeBuoy,
   FileQuestion,
   Library,
+  MessagesSquare,
+  GraduationCap,
+  Contact,
 } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
+import Community from '@/components/dashboard/Community'
+import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
+import StudentReports from '@/components/dashboard/StudentReports'
+import Announcements from '@/components/dashboard/Announcements'
+import PeopleRoster from '@/app/admin/components/PeopleRoster'
 import SupportTickets from '@/app/admin/components/SupportTickets'
 import { OfflineQueueSection } from '@/app/admin/components/PaymentsAdmin'
 import QuizBuilder from '@/app/admin/components/QuizBuilder'
@@ -647,7 +653,7 @@ import { useTabState } from '@/components/dashboard/useTabState'
 import TakeAttendance from '@/components/dashboard/TakeAttendance'
 import TimetableEditor from '@/components/dashboard/TimetableEditor'
 
-import { getStudents } from '@/lib/studentsStore'
+import { dsaApi } from '@/lib/api'
 import { getToken } from '@/lib/auth'
 
 import {
@@ -665,32 +671,6 @@ import {
 } from '@/lib/timetable'
 
 import type { ExamTrack } from '@/lib/studentProfile'
-
-// -----------------------------------------------------------------------------
-// Manual payment status
-// Browser-local stand-in for POST /api/payments/manual
-// -----------------------------------------------------------------------------
-
-interface ManualPayment {
-  method: string
-  reference: string
-  by: string
-  at: string
-}
-
-const PAY_KEY = 'dsa_manual_payments'
-
-function readPayments(): Record<string, ManualPayment> {
-  if (typeof window === 'undefined') return {}
-
-  try {
-    return JSON.parse(
-      localStorage.getItem(PAY_KEY) || '{}',
-    )
-  } catch {
-    return {}
-  }
-}
 
 // -----------------------------------------------------------------------------
 // Staff Dashboard
@@ -724,12 +704,22 @@ export default function StaffDashboard() {
   const can = (permission: string) =>
     permissions.includes(permission)
 
+  // Every staff member is in the Community; what they may do there comes
+  // from their role (enforced by the server).
+  const communityUnread = useCommunityUnread(view === 'community')
+
   const nav: NavItem[] = useMemo(() => {
     const items: NavItem[] = [
       {
         key: 'overview',
         label: 'Overview',
         icon: LayoutDashboard,
+      },
+      {
+        key: 'community',
+        label: 'Community',
+        icon: MessagesSquare,
+        badge: communityUnread,
       },
     ]
 
@@ -774,6 +764,22 @@ export default function StaffDashboard() {
       })
     }
 
+    if (can('tutors.view') || can('tutors.create')) {
+      items.push({
+        key: 'tutors',
+        label: 'Tutors',
+        icon: GraduationCap,
+      })
+    }
+
+    if (can('guardians.view') || can('guardians.create')) {
+      items.push({
+        key: 'guardians',
+        label: 'Guardians',
+        icon: Contact,
+      })
+    }
+
     if (
       can('quizzes.create') ||
       can('quizzes.manage') ||
@@ -803,7 +809,9 @@ export default function StaffDashboard() {
       })
     }
 
-    if (can('reports.view')) {
+    // Attendance & performance reports: reports.view sees both; a role that
+    // runs attendance sees the attendance report.
+    if (can('reports.view') || can('attendance.manage')) {
       items.push({
         key: 'reports',
         label: 'Reports',
@@ -822,7 +830,7 @@ export default function StaffDashboard() {
     return items
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissions])
+  }, [permissions, communityUnread])
 
   // If the active view is no longer permitted,
   // fall back to overview.
@@ -895,6 +903,13 @@ export default function StaffDashboard() {
       {/* Payments */}
       {/* ------------------------------------------------------------------ */}
 
+      {view === 'community' && (
+        <Community
+          mode="staff"
+          permissions={permissions}
+        />
+      )}
+
       {view === 'payments' && (
         <div className="space-y-4">
           <div>
@@ -951,6 +966,26 @@ export default function StaffDashboard() {
         <StudentsRedirectPanel />
       )}
 
+      {/* Tutors / guardians: the admin roster without staff-role editing or
+          suspend/delete; creating only with the matching permission. */}
+      {view === 'tutors' && (
+        <PeopleRoster
+          kind="tutors"
+          canCreate={can('tutors.create')}
+          canManageAccounts={false}
+          canManageRoles={false}
+        />
+      )}
+
+      {view === 'guardians' && (
+        <PeopleRoster
+          kind="guardians"
+          canCreate={can('guardians.create')}
+          canManageAccounts={false}
+          canManageRoles={false}
+        />
+      )}
+
       {/* ------------------------------------------------------------------ */}
       {/* Quizzes */}
       {/* ------------------------------------------------------------------ */}
@@ -972,9 +1007,7 @@ export default function StaffDashboard() {
       {/* ------------------------------------------------------------------ */}
 
       {view === 'announcements' && (
-        <AnnouncementsPanel
-          staffName={firstName}
-        />
+        <Announcements mode="tutor" />
       )}
 
       {/* ------------------------------------------------------------------ */}
@@ -982,7 +1015,10 @@ export default function StaffDashboard() {
       {/* ------------------------------------------------------------------ */}
 
       {view === 'reports' && (
-        <ReportsPanel />
+        <StudentReports
+          canSeePerformance={can('reports.view')}
+          scopeNote="Students on the staff roster (paid accounts), from recorded check-ins and quiz results only."
+        />
       )}
 
       {/* ------------------------------------------------------------------ */}
@@ -1015,18 +1051,32 @@ function OverviewPanel({
   canPayments: boolean
   canTimetable: boolean
 }) {
+  // Receipts waiting for review, from the live payments queue (null while
+  // loading or when it cannot be read).
   const [pending, setPending] =
-    useState(0)
+    useState<number | null>(null)
 
   useEffect(() => {
-    const paid = readPayments()
-
-    setPending(
-      getStudents().filter(
-        (student) => !paid[student.key],
-      ).length,
-    )
-  }, [])
+    if (!canPayments) return
+    let alive = true
+    dsaApi.payments
+      .offlineQueue(getToken() ?? undefined)
+      .then((rows) => {
+        if (!alive) return
+        setPending(
+          rows.filter((row) => {
+            const status = String(row.status ?? '').toLowerCase()
+            return status !== 'approved' && status !== 'rejected'
+          }).length,
+        )
+      })
+      .catch(() => {
+        /* the card shows a dash */
+      })
+    return () => {
+      alive = false
+    }
+  }, [canPayments])
 
   return (
     <div className="space-y-6">
@@ -1066,11 +1116,11 @@ function OverviewPanel({
 
               <div>
                 <p className="text-[8px] font-black text-gray-400 uppercase leading-none mb-1">
-                  Awaiting Payment
+                  Receipts to Review
                 </p>
 
                 <p className="text-lg font-black text-gray-900 leading-none">
-                  {pending}
+                  {pending ?? '—'}
                 </p>
               </div>
             </Card>
@@ -1184,138 +1234,6 @@ function StudentsRedirectPanel() {
           </Button>
         </div>
       </Card>
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// Announcements
-// -----------------------------------------------------------------------------
-
-function AnnouncementsPanel({
-  staffName,
-}: {
-  staffName: string
-}) {
-  const [title, setTitle] =
-    useState('')
-
-  const [body, setBody] =
-    useState('')
-
-  const [sent, setSent] =
-    useState(false)
-
-  return (
-    <div className="space-y-4 max-w-xl">
-      <h2 className="text-2xl font-black text-[#002EFF] italic uppercase">
-        Send Announcement
-      </h2>
-
-      <Card className="p-6 rounded-3xl border-none shadow-sm bg-white space-y-4">
-        {sent && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 text-emerald-700 text-[11px] font-bold">
-            <CheckCircle2 size={15} />
-
-            Announcement queued (demo). The
-            backend will deliver it to students.
-          </div>
-        )}
-
-        <input
-          value={title}
-          onChange={(event) => {
-            setTitle(event.target.value)
-            setSent(false)
-          }}
-          placeholder="Title"
-          className="w-full h-11 px-3 rounded-lg bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-bold"
-        />
-
-        <textarea
-          value={body}
-          onChange={(event) => {
-            setBody(event.target.value)
-            setSent(false)
-          }}
-          placeholder="Write your message to students…"
-          rows={5}
-          className="w-full px-3 py-2 rounded-lg bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-medium resize-none"
-        />
-
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-bold text-slate-400">
-            By {staffName}
-          </p>
-
-          <Button
-            disabled={
-              title.trim().length < 2 ||
-              body.trim().length < 2
-            }
-            onClick={() => {
-              setSent(true)
-              setTitle('')
-              setBody('')
-            }}
-            className="bg-[#002EFF] text-white rounded-xl font-black text-[10px] uppercase gap-2"
-          >
-            <Send size={13} />
-            Send
-          </Button>
-        </div>
-      </Card>
-    </div>
-  )
-}
-
-// -----------------------------------------------------------------------------
-// Reports
-// -----------------------------------------------------------------------------
-
-function ReportsPanel() {
-  return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-black text-[#002EFF] italic uppercase">
-        Reports
-      </h2>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="p-6 rounded-3xl border-none shadow-sm bg-white">
-          <p className="text-[9px] font-black uppercase text-gray-400 mb-2">
-            Student Reports
-          </p>
-
-          <p className="text-3xl font-black text-[#002EFF]">
-            —
-          </p>
-        </Card>
-
-        <Card className="p-6 rounded-3xl border-none shadow-sm bg-white">
-          <p className="text-[9px] font-black uppercase text-gray-400 mb-2">
-            Payment Reports
-          </p>
-
-          <p className="text-3xl font-black text-[#002EFF]">
-            —
-          </p>
-        </Card>
-
-        <Card className="p-6 rounded-3xl border-none shadow-sm bg-white">
-          <p className="text-[9px] font-black uppercase text-gray-400 mb-2">
-            Analytics
-          </p>
-
-          <p className="text-3xl font-black text-[#002EFF]">
-            —
-          </p>
-        </Card>
-      </div>
-
-      <p className="text-[10px] font-medium text-slate-400">
-        Read-only figures. Full analytics come
-        from the backend reporting endpoints.
-      </p>
     </div>
   )
 }
