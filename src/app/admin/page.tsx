@@ -440,7 +440,7 @@
 
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSecureSession } from '@/components/dashboard/useSecureSession'
 import { useTabState } from '@/components/dashboard/useTabState'
@@ -460,11 +460,11 @@ import {
   AlertTriangle,
   Search,
   X,
-  UserPlus,
   CalendarCheck,
   HelpCircle,
   HardDrive,
   BarChart3,
+  Settings as SettingsIcon,
 } from 'lucide-react'
 
 // UI Components
@@ -489,6 +489,7 @@ import CommunityModeration from './components/CommunityModeration'
 import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
 import StudentReports from '@/components/dashboard/StudentReports'
 import GuardianManagement from '@/components/dashboard/GuardianManagement'
+import PlatformSettings from './components/PlatformSettings'
 import PaymentsAdmin from './components/PaymentsAdmin'
 import RolesPermissions from './components/RolesPermissions'
 import SupportTickets from './components/SupportTickets'
@@ -516,9 +517,19 @@ type AdminTab =
   | 'support'
   | 'payments'
   | 'roles'
+  | 'platform-settings'
+
+/** For useSyncExternalStore reads that never change after the first render. */
+const noSubscription = () => () => {}
 
 export default function AdminAdmin() {
-  const [mounted, setMounted] = useState(false)
+  // An admin session in this browser? Read on the client only (the server
+  // render and the first client render both say "not yet").
+  const mounted = useSyncExternalStore(
+    noSubscription,
+    () => isAdmin(),
+    () => false,
+  )
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false)
   const [activeTab, setActiveTab] = useTabState<AdminTab>('dashboard')
@@ -557,11 +568,7 @@ export default function AdminAdmin() {
   })
 
   useEffect(() => {
-    if (!isAdmin()) {
-      router.push('/unauthorized')
-    } else {
-      setMounted(true)
-    }
+    if (!isAdmin()) router.push('/unauthorized')
   }, [router])
 
   if (!mounted) {
@@ -650,6 +657,7 @@ export default function AdminAdmin() {
       items: [
         { id: 'payments' as AdminTab, label: 'Payments', icon: Wallet },
         { id: 'roles' as AdminTab, label: 'Permissions', icon: ShieldCheck },
+        { id: 'platform-settings' as AdminTab, label: 'Platform Settings', icon: SettingsIcon },
       ],
     },
   ]
@@ -707,12 +715,16 @@ export default function AdminAdmin() {
         return <PaymentsAdmin />
       case 'roles':
         return <RolesPermissions />
+      case 'platform-settings':
+        return <PlatformSettings token={adminToken} />
       default:
         return <Error404 tabId={activeTab} />
     }
   }
 
-  const SidebarContent = () => (
+  // An element, not a component: the sidebar is shown twice (desktop and the
+  // mobile drawer) and must not be re-created as a new component each render.
+  const sidebarContent = (
     <div className='flex flex-col h-full py-8 px-4'>
       <div className='flex items-center justify-between mb-10 px-2'>
         <div className='flex items-center gap-3'>
@@ -825,7 +837,7 @@ export default function AdminAdmin() {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className='fixed inset-y-0 left-0 w-72 bg-[#002EFF] z-70 lg:hidden shadow-2xl'
             >
-              <SidebarContent />
+              {sidebarContent}
             </motion.aside>
           </>
         )}
@@ -873,7 +885,7 @@ export default function AdminAdmin() {
 
       {/* Desktop Navigation Sidebar */}
       <aside className='hidden lg:flex w-64 bg-[#002EFF] m-4 rounded-[2.5rem] flex-col shadow-2xl border border-blue-400/20 shrink-0'>
-        <SidebarContent />
+        {sidebarContent}
       </aside>
 
       {/* Main Container */}
@@ -962,7 +974,7 @@ function Error404({ tabId }: { tabId: string }) {
         Admin Endpoint Missing
       </h2>
       <p className='text-[10px] text-slate-500 mt-2 max-w-64 font-bold'>
-        The module <span className='text-blue-600'>"{tabId}"</span> has not been
+        The module <span className='text-blue-600'>&ldquo;{tabId}&rdquo;</span> has not been
         initialized in the Admin core.
       </p>
     </div>

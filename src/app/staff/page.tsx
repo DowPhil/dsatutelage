@@ -644,7 +644,6 @@ import SupportTickets from '@/app/admin/components/SupportTickets'
 import { OfflineQueueSection } from '@/app/admin/components/PaymentsAdmin'
 import QuizBuilder from '@/app/admin/components/QuizBuilder'
 import QuestionBank from '@/components/dashboard/QuestionBank'
-import { Button } from '@/components/ui/button'
 
 import DashboardShell, {
   type NavItem,
@@ -969,6 +968,7 @@ export default function StaffDashboard() {
             canSendActivation: can('students.manage'),
             canReviewChanges: can('students.manage'),
             canSeePlans: can('payments.manage'),
+            canVerifyPhysical: false,
           }}
           scopeNote="The staff roster: students on a paid plan with access switched on. Free accounts are managed by an admin."
         />

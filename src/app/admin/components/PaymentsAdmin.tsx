@@ -653,7 +653,6 @@ import {
   Trash2,
   Pencil,
   Loader2,
-  Check,
   X,
   Power,
   ExternalLink,
@@ -668,7 +667,6 @@ import {
 import { Card } from '@/components/ui/card'
 import { dsaApi } from '@/lib/api'
 import type { MonthlyRevenueResponse } from '@/lib/admin-api'
-import { DEFAULT_CAPS, type AccessCaps } from '@/lib/access'
 
 function adminToken(): string | undefined {
   if (typeof window === 'undefined') return undefined
@@ -787,7 +785,16 @@ export default function PaymentsAdmin() {
       </div>
 
       <PlansSection token={token} />
-      <CapsSection token={token} />
+      {/* Student limits now live in one place: Platform Settings. */}
+      <Card className='p-5 rounded-3xl border-none shadow-sm bg-white'>
+        <p className='text-[11px] font-black uppercase text-slate-500 flex items-center gap-1.5'>
+          <SlidersHorizontal size={14} /> Student limits
+        </p>
+        <p className='mt-1 text-[11px] font-medium text-slate-500'>
+          Quiz and test attempts, downloads, assignments and live classes for each plan are set in
+          <b> System → Platform Settings</b>, and enforced by the server.
+        </p>
+      </Card>
       <OfflineQueueSection token={token} />
     </div>
   )
@@ -1273,113 +1280,6 @@ function PlansSection({ token }: { token?: string }) {
 
 /* ------------------------------ Caps ------------------------------ */
 
-function CapsSection({ token }: { token?: string }) {
-  const [caps, setCaps] = useState<AccessCaps>(DEFAULT_CAPS)
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
-
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const c = (await dsaApi.payments.getCaps(
-          token,
-        )) as Partial<AccessCaps>
-
-        if (c && typeof c === 'object') {
-          setCaps((prev) => ({
-            ...prev,
-            ...c,
-          }))
-        }
-      } catch {
-        // Use defaults until backend ships.
-      }
-    })()
-  }, [token])
-
-  const field = (key: keyof AccessCaps, label: string) => (
-    <label className='flex items-center justify-between gap-2'>
-      <span className='text-[11px] font-bold text-slate-500'>
-        {label}
-      </span>
-
-      <input
-        type='number'
-        min={0}
-        value={caps[key]}
-        onChange={(e) =>
-          setCaps((c) => ({
-            ...c,
-            [key]: Number(e.target.value),
-          }))
-        }
-        className='w-20 h-9 px-2 rounded-lg bg-slate-50 outline-none text-sm font-bold text-center'
-      />
-    </label>
-  )
-
-  const save = async () => {
-    setSaving(true)
-
-    try {
-      await dsaApi.payments.setCaps(
-        caps as unknown as Record<string, number>,
-        token,
-      )
-
-      setSaved(true)
-
-      setTimeout(() => {
-        setSaved(false)
-      }, 2000)
-    } catch {
-      // Backend not live yet.
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Card className='p-5 rounded-3xl border-none shadow-sm bg-white space-y-3'>
-      <p className='text-[11px] font-black uppercase text-slate-500 flex items-center gap-1.5'>
-        <SlidersHorizontal size={14} />
-        Access caps (Free / Portal — Tutorial is unlimited)
-      </p>
-
-      <div className='grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2'>
-        <p className='text-[10px] font-black uppercase text-slate-400 sm:col-span-2 mt-1'>
-          Free (L1)
-        </p>
-
-        {field('freeTests', 'Free tests')}
-        {field('freeMaterials', 'Learning materials')}
-        {field('freeLiveClasses', 'Live classes')}
-
-        <p className='text-[10px] font-black uppercase text-slate-400 sm:col-span-2 mt-2'>
-          Portal Access (L2)
-        </p>
-
-        {field('portalTests', 'Tests')}
-        {field('portalMaterials', 'Learning materials')}
-        {field('portalLiveClasses', 'Live classes')}
-      </div>
-
-      <button
-        onClick={save}
-        disabled={saving}
-        className='flex items-center gap-2 h-9 px-4 bg-[#002EFF] text-white rounded-lg font-black text-[10px] uppercase tracking-wide hover:bg-blue-700 disabled:opacity-50'
-      >
-        {saving ? (
-          <Loader2 size={13} className='animate-spin' />
-        ) : saved ? (
-          <Check size={13} />
-        ) : null}
-
-        {saved ? 'Saved' : 'Save caps'}
-      </button>
-    </Card>
-  )
-}
 
 /* ------------------------ Offline review queue ------------------------ */
 

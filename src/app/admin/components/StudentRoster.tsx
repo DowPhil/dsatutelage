@@ -119,6 +119,8 @@ export interface StudentRosterAccess {
   canSendActivation: boolean
   canReviewChanges: boolean
   canSeePlans: boolean
+  /** Confirm a physical (on-campus) enrollment — admin only on the server. */
+  canVerifyPhysical: boolean
 }
 
 const FULL_ACCESS: StudentRosterAccess = {
@@ -130,6 +132,7 @@ const FULL_ACCESS: StudentRosterAccess = {
   canSendActivation: true,
   canReviewChanges: true,
   canSeePlans: true,
+  canVerifyPhysical: true,
 }
 
 export default function StudentRoster({
@@ -1206,6 +1209,7 @@ export default function StudentRoster({
           canChangeStatus={can.canChangeStatus}
           canDelete={can.canDelete}
           canSendActivation={can.canSendActivation}
+          canVerifyPhysical={can.canVerifyPhysical}
           onClose={() => setSelectedStudent(null)}
           onStatusChangeRequest={(student, targetStatus) =>
             setActionModal({
@@ -1571,11 +1575,13 @@ function StudentDetailsModal({
   canChangeStatus = true,
   canDelete = true,
   canSendActivation = true,
+  canVerifyPhysical = true,
 }: {
   student: ExtendedStudentPerson
   canChangeStatus?: boolean
   canDelete?: boolean
   canSendActivation?: boolean
+  canVerifyPhysical?: boolean
   onClose: () => void
   onStatusChangeRequest: (
     person: ExtendedStudentPerson,
@@ -1797,6 +1803,15 @@ function StudentDetailsModal({
                   label='Learning Mode'
                   value={details?.learningMode || 'Not Specified'}
                 />
+
+                {details && student.id && (details.learningMode === 'physical' || details.physicalEnrollment?.verified) && (
+                  <PhysicalEnrollmentPanel
+                    studentId={student.id}
+                    learningMode={details.learningMode}
+                    enrollment={details.physicalEnrollment}
+                    canEdit={canVerifyPhysical}
+                  />
+                )}
 
                 <StudentInfoCard
                   label='Exam Track'
@@ -2539,6 +2554,103 @@ function AlertModal({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * A physical (on-campus) enrollment confirmed by an admin: only then does the
+ * student get the physical-student entitlements in Platform Settings. The
+ * student's own choice of "physical" learning mode grants nothing.
+ */
+function PhysicalEnrollmentPanel({
+  studentId,
+  learningMode,
+  enrollment,
+  canEdit,
+}: {
+  studentId: string
+  learningMode: string
+  enrollment?: { verified: boolean; verifiedAt: string | null; expiresAt: string | null }
+  canEdit: boolean
+}) {
+  const [state, setState] = useState(enrollment ?? { verified: false, verifiedAt: null, expiresAt: null })
+  const [until, setUntil] = useState(enrollment?.expiresAt ? enrollment.expiresAt.slice(0, 10) : '')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const expired = state.verified && state.expiresAt && new Date(state.expiresAt).getTime() <= Date.now()
+
+  const save = async (verified: boolean) => {
+    setBusy(true)
+    setMsg(null)
+    const token =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('admin_token') || localStorage.getItem('token') || undefined
+        : undefined
+    try {
+      await dsaApi.platformSettings.setPhysicalEnrollment(
+        studentId,
+        { verified, expiresAt: verified && until ? new Date(`${until}T23:59:59`).toISOString() : null },
+        token,
+      )
+      setState({ verified, verifiedAt: verified ? new Date().toISOString() : null, expiresAt: verified && until ? `${until}T23:59:59` : null })
+      setMsg({ ok: true, text: verified ? 'Physical enrollment confirmed.' : 'Physical enrollment withdrawn.' })
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Could not save.' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className='rounded-2xl border border-slate-100 bg-slate-50 p-3 sm:col-span-2'>
+      <p className='text-[9px] font-black uppercase tracking-widest text-slate-400'>Physical enrollment</p>
+      <p className={`mt-1 text-[11px] font-black ${state.verified && !expired ? 'text-emerald-700' : 'text-slate-600'}`}>
+        {state.verified && !expired
+          ? `Confirmed${state.expiresAt ? ` until ${new Date(state.expiresAt).toLocaleDateString('en-GB')}` : ''} — physical-student access`
+          : expired
+            ? 'Confirmation expired — treated by their portal plan'
+            : 'Not confirmed — treated by their portal plan'}
+      </p>
+      {learningMode !== 'physical' && (
+        <p className='mt-1 text-[10px] font-bold text-amber-700'>The student is set to online learning, so this does not apply.</p>
+      )}
+      {canEdit && (
+        <div className='mt-2 flex flex-wrap items-center gap-2'>
+          <label className='flex items-center gap-1.5 text-[10px] font-bold text-slate-500'>
+            Until (optional)
+            <input
+              type='date'
+              value={until}
+              onChange={(e) => setUntil(e.target.value)}
+              className='h-8 rounded-lg border border-slate-200 bg-white px-2 text-[11px] font-bold'
+            />
+          </label>
+          <button
+            type='button'
+            disabled={busy || learningMode !== 'physical'}
+            onClick={() => save(true)}
+            className='h-8 rounded-lg bg-[#002EFF] px-3 text-[10px] font-black uppercase text-white disabled:opacity-50'
+          >
+            {state.verified ? 'Update' : 'Confirm enrollment'}
+          </button>
+          {state.verified && (
+            <button
+              type='button'
+              disabled={busy}
+              onClick={() => save(false)}
+              className='h-8 rounded-lg bg-rose-50 px-3 text-[10px] font-black uppercase text-rose-600 disabled:opacity-50'
+            >
+              Withdraw
+            </button>
+          )}
+        </div>
+      )}
+      {msg && (
+        <p role={msg.ok ? 'status' : 'alert'} className={`mt-1 text-[10px] font-bold ${msg.ok ? 'text-emerald-600' : 'text-rose-600'}`}>
+          {msg.text}
+        </p>
+      )}
     </div>
   )
 }

@@ -37,9 +37,11 @@ import QuizLeaderboard, {
 import { ScientificCalculator } from '@/app/rapid-quiz/components/Calculator'
 import { dsaApi } from '@/lib/api'
 import { getToken, getUser } from '@/lib/auth'
-import { useCachedUser } from '@/lib/useCachedUser'
-import { capFor } from '@/lib/access'
-import { CapReachedCard } from '@/components/dashboard/LockedNotice'
+import {
+  useEntitlements,
+  refreshEntitlements,
+  resetDate,
+} from '@/components/dashboard/useEntitlements'
 import { resolveStudentProfile } from '@/lib/studentProfile'
 import { quizMatchesProfile } from '@/lib/quizAudience'
 
@@ -81,6 +83,8 @@ const QUIZ_PENDING_KEY = 'dsa-quiz-pending'
 type SubmitPayload = {
   timeTaken: number
   answers: { questionId: string; selectedOption: number }[]
+  /** The sitting this submission belongs to: a retried send is not charged again. */
+  sessionId?: string | null
 }
 type PendingSubmission = { quizId: string; payload: SubmitPayload }
 
@@ -125,7 +129,6 @@ function isOffline(err?: unknown): boolean {
 
 export default function QuizRunner() {
   const token = getToken() ?? undefined
-  const cachedUser = useCachedUser()
   const [view, setView] = useState<'list' | 'take' | 'result' | 'history'>('list')
   const [quizzes, setQuizzes] = useState<Record<string, unknown>[]>([])
   const [myResults, setMyResults] = useState<Record<string, unknown>[]>([])
@@ -147,6 +150,8 @@ export default function QuizRunner() {
   // split-screen). Auto-submit after more than two.
   const [breaches, setBreaches] = useState(0)
   const breachRef = useRef(0)
+  // The server sitting this quiz is being taken in (from POST /start).
+  const sessionIdRef = useRef<string | null>(null)
   const [showWarning, setShowWarning] = useState(false)
   const [showCorrections, setShowCorrections] = useState(false)
   // Pagination while taking: how many questions to show per page (0 = all).
@@ -202,6 +207,7 @@ export default function QuizRunner() {
       const id = str(quiz.id ?? quiz._id)
       const timeTaken = Math.max(1, Math.round((totalTime.current || 0) - remaining))
       const payload: SubmitPayload = {
+        sessionId: sessionIdRef.current,
         timeTaken,
         answers: questions.map((q) => ({
           questionId: q.questionId,
@@ -459,6 +465,19 @@ export default function QuizRunner() {
       if (flat.length === 0) {
         setError('This quiz has no questions yet.')
         return
+      }
+      // Begin the sitting on the server: this uses one of the month's quiz
+      // and test attempts (resuming an open one does not). Refused when the
+      // month is used up — before any time is spent on the questions.
+      try {
+        const started = await dsaApi.quizzes.start(qid, token)
+        sessionIdRef.current = started.sessionId ?? null
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not start this quiz.')
+        setView('list')
+        return
+      } finally {
+        void refreshEntitlements()
       }
       setQuiz(full)
       setQuestions(flat)
@@ -1202,6 +1221,7 @@ export default function QuizRunner() {
       )}
 
       {error && <p className='text-[11px] font-bold text-rose-600 px-1'>{error}</p>}
+      <QuizAllowance />
       {loading ? (
         <div className='py-10 flex justify-center'>
           <Loader2 className='animate-spin text-[#002EFF]' />
@@ -1212,7 +1232,7 @@ export default function QuizRunner() {
         </p>
       ) : (
         <>
-          {quizzes.slice(0, capFor('tests', cachedUser)).map((q) => {
+          {quizzes.map((q) => {
           const subjects = Array.isArray(q.subjects) ? q.subjects : []
           const qCount = subjects.reduce(
             (n: number, s: Record<string, unknown>) =>
@@ -1269,9 +1289,6 @@ export default function QuizRunner() {
             </Card>
           )
           })}
-          {quizzes.length > capFor('tests', cachedUser) && (
-            <CapReachedCard what='free tests' cap={capFor('tests', cachedUser)} />
-          )}
         </>
       )}
     </div>
@@ -1420,6 +1437,48 @@ function QuizHistory({
             )
           })}
         </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * This month's quiz and test allowance (from the server), above the list:
+ * used, left, the limit and when it resets — and the way to upgrade once it is
+ * used up. Nothing for unlimited plans, staff or tutors.
+ */
+function QuizAllowance() {
+  const { entitlements: e } = useEntitlements()
+  if (!e || e.unrestricted || !e.quizzes) return null
+  const q = e.quizzes
+  if (!q.enabled) {
+    return (
+      <div className='mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold text-amber-800' role='status'>
+        Quizzes and tests are not included in your {e.label} plan.
+        {e.canUpgrade && ' Upgrade your plan to take them.'}
+      </div>
+    )
+  }
+  if (q.limit == null) return null
+  const out = (q.remaining ?? 0) <= 0
+  return (
+    <div
+      className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-4 py-3 ${
+        out ? 'border-rose-200 bg-rose-50' : 'border-slate-100 bg-white'
+      }`}
+      role='status'
+    >
+      <p className={`text-[11px] font-bold ${out ? 'text-rose-700' : 'text-slate-600'}`}>
+        Quizzes &amp; tests this month: <b>{q.used}</b> of <b>{q.limit}</b> used
+        {out ? ' — none left.' : ` · ${q.remaining} left.`} Resets on {resetDate(q.resetsAt, e.timezone)}.
+      </p>
+      {out && e.canUpgrade && (
+        <a
+          href='/dashboard?tab=unlock'
+          className='rounded-xl bg-[#002EFF] px-3 py-1.5 text-[10px] font-black uppercase text-white hover:bg-blue-700'
+        >
+          Upgrade
+        </a>
       )}
     </div>
   )

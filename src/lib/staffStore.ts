@@ -431,6 +431,12 @@ export const PERMISSIONS: Permission[] = [
   },
 
   {
+    key: 'community.manage',
+    label: 'Manage community (access, free-student limit, rooms)',
+    module: 'Engagement',
+  },
+
+  {
     key: 'reports.view',
     label: 'View reports & analytics',
     module: 'Engagement',
@@ -548,6 +554,8 @@ const SEED_ROLES: StaffRole[] = [
       'guardians.view',
       'guardians.create',
       'guardians.manage',
+      'community.manage',
+      'community.moderate',
     ],
   },
 
@@ -907,10 +915,7 @@ export function getStaffByEmail(
  *
  * It returns null deliberately.
  */
-export function findStaffLogin(
-  _email: string,
-  _password: string,
-): StaffMember | null {
+export function findStaffLogin(): StaffMember | null {
   return null
 }
 

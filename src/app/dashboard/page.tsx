@@ -12,7 +12,6 @@ import {
   Menu,
   Search,
   GraduationCap,
-  Bell,
   Library,
   Users,
   Lock,
@@ -82,6 +81,7 @@ import MyCourses from '@/components/dashboard/MyCourses'
 import NotificationBell from '@/components/dashboard/NotificationBell'
 import QuizRunner from '@/components/dashboard/QuizRunner'
 import UnlockPlans from '@/components/dashboard/UnlockPlans'
+import { useEntitlements } from '@/components/dashboard/useEntitlements'
 import PlanBadge from '@/components/dashboard/PlanBadge'
 import { useTabState } from '@/components/dashboard/useTabState'
 import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
@@ -112,6 +112,8 @@ export default function AcademyDashboard() {
   const [mounted, setMounted] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [activeView, setActiveView] = useTabState<ViewState>('overview')
+  // What the server says this student's plan includes (Platform Settings).
+  const { entitlements } = useEntitlements()
   const communityUnread = useCommunityUnread(activeView === 'community')
   const announcementsUnread = useAnnouncementsUnread(
     activeView === 'announcements',
@@ -301,7 +303,7 @@ export default function AcademyDashboard() {
     premium,
     badge,
   }: {
-    icon: any
+    icon: React.ElementType
     label: string
     view: ViewState
     premium?: boolean
@@ -530,7 +532,9 @@ export default function AcademyDashboard() {
               <ResourcesView isDSAite={user.isDSAite} />
             )}
             {activeView === 'assignments' &&
-              (canAccess('assignments', cachedUser) ? (
+              ((entitlements
+                ? entitlements.unrestricted || entitlements.assignments?.access
+                : canAccess('assignments', cachedUser)) ? (
                 <Assignments mode='student' />
               ) : (
                 <LockedNotice feature='Assignments' need='tutorial' />

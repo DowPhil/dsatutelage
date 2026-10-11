@@ -49,6 +49,7 @@ import {
   Megaphone,
   SlidersHorizontal,
   CheckCheck,
+  Settings2,
 } from 'lucide-react'
 import { dsaApi, type CommunityAccessStatus } from '@/lib/api'
 import { getToken, getUser } from '@/lib/auth'
@@ -358,6 +359,8 @@ export default function Community({
   const mentionedRef = useRef<Record<string, string>>({})
   // The notifications panel (unread + mentions per channel, with mute).
   const [bellOpen, setBellOpen] = useState(false)
+  // A student's own settings: membership, muting, rooms to rejoin.
+  const [mySettingsOpen, setMySettingsOpen] = useState(false)
   const [memberSearch, setMemberSearch] = useState('')
   // Search across the channels this person can open.
   const [searchOpen, setSearchOpen] = useState(false)
@@ -483,12 +486,19 @@ export default function Community({
   // also moderate (delete any message). Students get everything except audio.
   // Staff get these through their role (mirrors utils/communityRoles on the
   // server, which enforces them).
+  // community.manage runs the Community like an admin (access, free-student
+  // limit, rooms) and includes moderating and leading rooms.
+  const staffManages =
+    mode === 'staff' && permissions.includes('community.manage')
   const staffLeads =
     mode === 'staff' &&
     (permissions.includes('announcements.send') ||
-      permissions.includes('community.moderate'))
+      permissions.includes('community.moderate') ||
+      staffManages)
   const staffModerates =
-    mode === 'staff' && permissions.includes('community.moderate')
+    mode === 'staff' && (permissions.includes('community.moderate') || staffManages)
+  /** Admin, or staff with community.manage: the management pane. */
+  const canAdminister = mode === 'admin' || staffManages
   const canCompose = true
   const canRecord = mode === 'tutor' || mode === 'admin' || staffLeads
   const isModerator = mode === 'admin' || staffModerates
@@ -1665,13 +1675,13 @@ const cancelRecording = useCallback(() => {
   const showStatus = useCallback(
     (a: CommunityAccessStatus) => {
       setAccess(a.access === 'paid' ? 'paid' : 'all')
-      if (mode === 'admin') {
+      if (canAdminister) {
         setCapInfo(a)
         setCapUnlimited(a.freeStudentCap == null)
         setCapDraft(a.freeStudentCap == null ? '' : String(a.freeStudentCap))
       }
     },
-    [mode],
+    [canAdminister],
   )
 
   const refreshAccess = useCallback(async () => {
@@ -2105,7 +2115,7 @@ const loadChannels = useCallback(async () => {
   )
 
   useEffect(() => {
-    if (mode !== 'admin') return
+    if (!canAdminister) return
     let alive = true
     dsaApi.admin
       .listUsers('tutor', token)
@@ -2124,7 +2134,7 @@ const loadChannels = useCallback(async () => {
     return () => {
       alive = false
     }
-  }, [mode, token])
+  }, [canAdminister, token])
 
   const deleteChannel = useCallback(
     async (id: string) => {
@@ -2293,7 +2303,7 @@ const loadChannels = useCallback(async () => {
     channels.find((c) => c.id === activeChannel) ??
     ({ id: 'general', name: 'General', kind: 'general' } as CommunityChannel)
   const canManageMembers = mode === 'tutor' || mode === 'admin' || staffModerates
-  const isAdmin = mode === 'admin'
+  const isAdmin = canAdminister
 
   // The pane shown on a phone: the pod list first, then the conversation you
   // tapped, Telegram-style. Both sit side by side from `md` up.
@@ -2346,28 +2356,6 @@ const loadChannels = useCallback(async () => {
             >
               Community: {access === 'all' ? 'Free' : 'Paid'}
             </span>
-          </div>
-        </div>
-
-        {/* Name */}
-        <div>
-          <p className='mb-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400'>
-            Channel name
-          </p>
-          <div className='flex items-center gap-2'>
-            <input
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              placeholder={active.name}
-              className='h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-bold outline-none focus:border-[#002EFF]/40'
-            />
-            <button
-              onClick={renameChannel}
-              disabled={!renameValue.trim() || renaming}
-              className='h-10 shrink-0 rounded-xl bg-[#002EFF] px-3 text-[10px] font-black uppercase text-white hover:bg-blue-700 disabled:opacity-50'
-            >
-              {renaming ? <Loader2 size={12} className='animate-spin' /> : 'Save'}
-            </button>
           </div>
         </div>
 
@@ -2460,6 +2448,33 @@ const loadChannels = useCallback(async () => {
             )}
           </div>
         </div>
+
+        <p className='flex items-center gap-1.5 border-t border-slate-100 pt-3 text-[9px] font-black uppercase tracking-widest text-[#002EFF]'>
+          <Hash size={11} /> This room only
+        </p>
+
+        {/* Name */}
+        <div>
+          <p className='mb-1.5 text-[9px] font-black uppercase tracking-widest text-slate-400'>
+            Channel name
+          </p>
+          <div className='flex items-center gap-2'>
+            <input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              placeholder={active.name}
+              className='h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-[12px] font-bold outline-none focus:border-[#002EFF]/40'
+            />
+            <button
+              onClick={renameChannel}
+              disabled={!renameValue.trim() || renaming}
+              className='h-10 shrink-0 rounded-xl bg-[#002EFF] px-3 text-[10px] font-black uppercase text-white hover:bg-blue-700 disabled:opacity-50'
+            >
+              {renaming ? <Loader2 size={12} className='animate-spin' /> : 'Save'}
+            </button>
+          </div>
+        </div>
+
 
         {active.id !== 'general' ? (
           <>
@@ -2962,6 +2977,20 @@ const loadChannels = useCallback(async () => {
             >
               <Bell size={15} />
             </HeaderButton>
+            {mode === 'student' && (
+              <HeaderButton
+                on={mySettingsOpen}
+                onClick={() => {
+                  setMySettingsOpen((o) => !o)
+                  setBellOpen(false)
+                  setMembersOpen(false)
+                  setSearchOpen(false)
+                }}
+                label='My settings'
+              >
+                <Settings2 size={15} />
+              </HeaderButton>
+            )}
             {canLock && (
               <HeaderButton
                 on={locked}
@@ -3039,9 +3068,67 @@ const loadChannels = useCallback(async () => {
               </p>
             </div>
           )}
-          {(membersOpen || bellOpen || searchOpen) && (
+          {(membersOpen || bellOpen || searchOpen || mySettingsOpen) && (
             <div className='absolute inset-x-2 top-2 z-30 max-h-[85%] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:inset-x-auto sm:right-3 sm:w-80'>
               {membersOpen && membersPanel}
+              {mySettingsOpen && (
+                <div className='max-h-[70vh] overflow-y-auto p-3 custom-scrollbar' role='region' aria-label='My Community settings'>
+                  <div className='mb-2 flex items-center justify-between'>
+                    <p className='flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400'>
+                      <Settings2 size={12} /> My Community settings
+                    </p>
+                    <button onClick={() => setMySettingsOpen(false)} className='text-zinc-400 hover:text-zinc-600' aria-label='Close my settings'>
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className='mb-3 rounded-xl bg-slate-50 px-3 py-2'>
+                    <p className='text-[9px] font-black uppercase text-slate-400'>Membership</p>
+                    <p className='text-[11px] font-bold text-slate-700'>
+                      {gate?.tier === 'paid'
+                        ? 'Paid member — the Community is part of your plan.'
+                        : gate?.tier === 'free'
+                          ? 'Free member — you hold one of the Community’s places for free students.'
+                          : 'Member'}
+                    </p>
+                  </div>
+                  <p className='mb-1.5 text-[9px] font-black uppercase text-slate-400'>Rooms &amp; notifications</p>
+                  <div className='space-y-1.5'>
+                    {channels.map((c) => (
+                      <div key={c.id} className='flex items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2'>
+                        <div className='min-w-0'>
+                          <p className='truncate text-[11px] font-black text-slate-700'>{c.name}</p>
+                          <p className='text-[9px] font-bold text-slate-400'>
+                            {c.removed ? 'You were removed' : c.muted ? 'Muted' : 'Notifications on'}
+                          </p>
+                        </div>
+                        {c.removed ? (
+                          <button
+                            type='button'
+                            onClick={() => {
+                              setMySettingsOpen(false)
+                              openChannel(c.id)
+                            }}
+                            className='shrink-0 rounded-lg bg-[#002EFF] px-2.5 py-1 text-[9px] font-black uppercase text-white'
+                          >
+                            Rejoin
+                          </button>
+                        ) : (
+                          <button
+                            type='button'
+                            onClick={() => void setMute(c.id, c.muted ? 0 : undefined)}
+                            aria-pressed={!!c.muted}
+                            aria-label={`${c.muted ? 'Unmute' : 'Mute'} ${c.name}`}
+                            className='flex shrink-0 items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1 text-[9px] font-black uppercase text-slate-600 hover:bg-slate-200'
+                          >
+                            {c.muted ? <Bell size={11} /> : <BellOff size={11} />}
+                            {c.muted ? 'Unmute' : 'Mute'}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {bellOpen && (
                 <div className='max-h-[70vh] overflow-y-auto p-3 custom-scrollbar'>
                   <div className='mb-2 flex items-center justify-between'>

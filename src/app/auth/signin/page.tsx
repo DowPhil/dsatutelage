@@ -570,7 +570,7 @@ function LoginContent() {
       return true
     }
 
-    const staff = findStaffLogin(values.email, values.password)
+    const staff = findStaffLogin()
     if (staff) {
       setSession({
         token: `${DEMO_TOKEN_PREFIX}staff_${staff.id}`,
@@ -621,7 +621,14 @@ function LoginContent() {
           password: values.password,
         })
 
-        const resPayload = adminRes as Record<string, any>
+        // The admin login answer has been shaped a few ways over time.
+        const resPayload = adminRes as unknown as {
+          token?: string
+          accessToken?: string
+          role?: AdminLoginRole
+          user?: AdminLoginUser
+          data?: { token?: string; user?: AdminLoginUser }
+        }
         const token =
           resPayload?.token ||
           resPayload?.accessToken ||
@@ -654,8 +661,8 @@ function LoginContent() {
           )
         } else {
           const apiMessage =
-            (adminErr as any)?.response?.data?.message ||
-            (adminErr as any)?.response?.data?.error ||
+            (adminErr as HttpErrorShape)?.response?.data?.message ||
+            (adminErr as HttpErrorShape)?.response?.data?.error ||
             (standardErr as Error)?.message ||
             'Invalid email or password.'
           setError(apiMessage)
@@ -912,6 +919,13 @@ function LoginContent() {
     </div>
   )
 }
+
+/** The user object an admin login returns (what the sessions store). */
+type AdminLoginUser = NonNullable<Parameters<typeof setSession>[0]['user']>
+type AdminLoginRole = Parameters<typeof setSession>[0]['role']
+
+/** An HTTP client error that may carry the server's message. */
+type HttpErrorShape = { response?: { data?: { message?: string; error?: string } } }
 
 export default function LoginPage() {
   return (

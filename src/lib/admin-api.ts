@@ -76,7 +76,7 @@ export interface MyAttendanceResponse {
       date?: string
       status?: string
       at?: string
-      [key: string]: any
+      [key: string]: unknown
     }>
   }
 }
@@ -194,6 +194,8 @@ export interface StudentDetailsResponse {
     programme: string[]
     currentLevel: string
     learningMode: string
+    /** Admin-confirmed on-campus enrollment (gives physical-student entitlements). */
+    physicalEnrollment?: { verified: boolean; verifiedAt: string | null; expiresAt: string | null }
     department: string
     examTrack: string
     phone: string
@@ -271,7 +273,7 @@ export interface UpdateUserStatusPayload {
 export interface ActionSuccessResponse {
   success: boolean
   message: string
-  data?: any
+  data?: unknown
 }
 
 // ==========================================
@@ -300,7 +302,7 @@ export interface Course {
   category: CourseCategory | string
   tutorId?: string
   tutorName?: string
-  tutor?: Record<string, any>
+  tutor?: Record<string, unknown>
   description?: string
   department?: string
   thumbnailUrl?: string
@@ -333,7 +335,7 @@ export interface CreateCoursePayload {
   isPublished?: boolean
 }
 
-export interface UpdateCoursePayload extends Partial<CreateCoursePayload> {}
+export type UpdateCoursePayload = Partial<CreateCoursePayload>
 
 export interface CourseListParams {
   category?: CourseCategory
@@ -755,7 +757,7 @@ getStudentDetails: (id: string) =>
    * Create tutor, parent, staff, or admin account directly
    * Endpoint: POST /api/admin/staff
    */
-  createStaff: <T = ActionSuccessResponse>(data: Record<string, any>) =>
+  createStaff: <T = ActionSuccessResponse>(data: Record<string, unknown>) =>
     adminFetch<T>('/api/admin/staff', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -765,7 +767,7 @@ getStudentDetails: (id: string) =>
    * Manually create a student account (no payment flow — starts on Free).
    * Endpoint: POST /api/admin/students
    */
-  createStudent: <T = ActionSuccessResponse>(data: Record<string, any>) =>
+  createStudent: <T = ActionSuccessResponse>(data: Record<string, unknown>) =>
     adminFetch<T>('/api/admin/students', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -785,7 +787,7 @@ getStudentDetails: (id: string) =>
     id?: string
     name: string
     permissions: string[]
-    [key: string]: any
+    [key: string]: unknown
   }) =>
     adminFetch<T>('/api/admin/roles', {
       method: 'POST',
@@ -802,7 +804,7 @@ getStudentDetails: (id: string) =>
     }),
 
   /** Mark student paid (offline / cash / bank transfer) */
-  markManualPayment: <T = any>(paymentData: {
+  markManualPayment: <T = unknown>(paymentData: {
     studentId: string
     amount: number
     reference?: string
@@ -812,7 +814,7 @@ getStudentDetails: (id: string) =>
       body: JSON.stringify(paymentData),
     }),
 
-    offlineHistory: (status: 'approved' | 'rejected', token?: string) =>
+    offlineHistory: (status: 'approved' | 'rejected') =>
   adminFetch<{
     success: boolean
     count: number
@@ -824,7 +826,7 @@ getStudentDetails: (id: string) =>
   // ==========================================
 
   /** List announcements with optional scope/track filters */
-  getAnnouncements: <T = any>(params?: { scope?: string; track?: string }) => {
+  getAnnouncements: <T = unknown>(params?: { scope?: string; track?: string }) => {
     const queryParams = new URLSearchParams()
     if (params?.scope) queryParams.append('scope', params.scope)
     if (params?.track) queryParams.append('track', params.track)
@@ -836,12 +838,12 @@ getStudentDetails: (id: string) =>
   },
 
   /** Create and broadcast announcement to matching students */
-  createAnnouncement: <T = any>(announcementData: {
+  createAnnouncement: <T = unknown>(announcementData: {
     scope: 'global' | 'track' | 'course' | string
     title: string
     body: string
     examTrack?: AcademicTrack | string
-    [key: string]: any
+    [key: string]: unknown
   }) =>
     adminFetch<T>('/api/announcements', {
       method: 'POST',
@@ -943,7 +945,7 @@ getStudentDetails: (id: string) =>
   // ==========================================
 
   /** Get all quizzes (Optionally filter by courseId) */
-  getAllQuizzes: <T = any>(courseId?: string) =>
+  getAllQuizzes: <T = unknown>(courseId?: string) =>
     adminFetch<T>(
       courseId
         ? `/api/quizzes?courseId=${encodeURIComponent(courseId)}`
@@ -951,31 +953,31 @@ getStudentDetails: (id: string) =>
     ),
 
   /** Create a new quiz */
-  createQuiz: <T = any>(quizData: Record<string, any>) =>
+  createQuiz: <T = unknown>(quizData: Record<string, unknown>) =>
     adminFetch<T>('/api/quizzes', {
       method: 'POST',
       body: JSON.stringify(quizData),
     }),
 
   /** Get quiz by ID */
-  getQuizById: <T = any>(quizId: string) =>
+  getQuizById: <T = unknown>(quizId: string) =>
     adminFetch<T>(`/api/quizzes/${encodeURIComponent(quizId)}`),
 
   /** Update a quiz */
-  updateQuiz: <T = any>(quizId: string, quizData: Record<string, any>) =>
+  updateQuiz: <T = unknown>(quizId: string, quizData: Record<string, unknown>) =>
     adminFetch<T>(`/api/quizzes/${encodeURIComponent(quizId)}`, {
       method: 'PUT',
       body: JSON.stringify(quizData),
     }),
 
   /** Delete a quiz */
-  deleteQuiz: <T = any>(quizId: string) =>
+  deleteQuiz: <T = unknown>(quizId: string) =>
     adminFetch<T>(`/api/quizzes/${encodeURIComponent(quizId)}`, {
       method: 'DELETE',
     }),
 
   /** Toggle or explicitly set quiz status (active/inactive) */
-  toggleQuizStatus: <T = any>(quizId: string, status?: { isActive: boolean }) =>
+  toggleQuizStatus: <T = unknown>(quizId: string, status?: { isActive: boolean }) =>
     adminFetch<T>(`/api/quizzes/${encodeURIComponent(quizId)}/status`, {
       method: 'PATCH',
       ...(status && { body: JSON.stringify(status) }),
@@ -986,7 +988,7 @@ getStudentDetails: (id: string) =>
   // ==========================================
 
   /** Upsert program countdown */
-  upsertProgram: <T = any>(programData: Record<string, any>) =>
+  upsertProgram: <T = unknown>(programData: Record<string, unknown>) =>
     adminFetch<T>('/api/programs', {
       method: 'POST',
       body: JSON.stringify(programData),

@@ -183,6 +183,62 @@ async function fetchAllPages(
 }
 
 /** Default headers, including the Bearer token when available. */
+/** One month's use of an allowance. limit / remaining null = unlimited. */
+export interface Allowance {
+  period: string
+  used: number
+  limit: number | null
+  remaining: number | null
+  resetsAt: string
+}
+
+export interface QuizStartResult {
+  unrestricted?: boolean
+  sessionId?: string
+  resumed?: boolean
+  expiresAt?: string
+  allowance?: Allowance
+}
+
+/** GET /entitlements/me (staff, tutors and admins: unrestricted). */
+export interface MyEntitlements {
+  category: 'free' | 'portal' | 'tutorial' | 'physical' | null
+  label?: string
+  unrestricted: boolean
+  timezone?: string
+  quizzes?: { enabled: boolean } & Allowance
+  materials?: { view: boolean; download: boolean; downloads: Allowance }
+  assignments?: { access: boolean; submit: boolean }
+  liveClasses?: { limit: number | null }
+  canUpgrade?: boolean
+}
+
+export type StudentCategory = 'free' | 'portal' | 'tutorial' | 'physical'
+
+export interface CategoryEntitlements {
+  quizzes: { enabled: boolean; monthlyAttempts: number | null }
+  materials: { view: boolean; download: boolean; monthlyDownloads: number | null }
+  assignments: { access: boolean; submit: boolean }
+  liveClasses: { limit: number | null }
+}
+
+export type EntitlementSettings = Record<StudentCategory, CategoryEntitlements>
+
+export interface PlatformSettingsData {
+  categories: { id: StudentCategory; label: string }[]
+  entitlements: EntitlementSettings
+  timezone: string
+  canEdit: boolean
+}
+
+export interface SettingsHistoryEntry {
+  id: string
+  area: 'PLATFORM_SETTINGS' | 'COMMUNITY_SETTINGS' | 'PHYSICAL_ENROLLMENT' | string
+  at: string
+  by: { id: string; name: string; role: string } | null
+  changes: { setting: string; from: unknown; to: unknown }[]
+}
+
 /** GET /community/access. Cap fields are for admins; `me` for students. */
 export interface CommunityAccessStatus {
   access: 'all' | 'paid'
@@ -501,7 +557,18 @@ export const dsaApi = {
         body: JSON.stringify(payload),
       }).then((r) => handleResponse<{ valid: boolean; quiz?: Quiz }>(r)),
 
-    submit: (id: string, payload: QuizSubmission, token?: string) =>
+    // POST /quizzes/:id/start — begin (or resume) a sitting. For students it
+    // uses one of the month's quiz/test attempts unless one is already open;
+    // 403 when the plan has no quizzes or the month is used up.
+    start: (id: string, token?: string) =>
+      fetch(`${BASE_URL}/quizzes/${encodeURIComponent(id)}/start`, {
+        method: 'POST',
+        headers: getHeaders(token),
+      })
+        .then((r) => handleResponse<{ data?: QuizStartResult }>(r))
+        .then((r) => (r?.data ?? {}) as QuizStartResult),
+
+    submit: (id: string, payload: QuizSubmission & { sessionId?: string | null }, token?: string) =>
       fetch(`${BASE_URL}/quizzes/${id}/submit`, {
         method: 'POST',
         headers: getHeaders(token),
@@ -800,6 +867,60 @@ export const dsaApi = {
       })
         .then((r) => handleResponse<{ data?: unknown }>(r))
         .then((r) => (r as { data?: unknown }).data ?? r),
+  },
+
+  // The signed-in student's plan and this month's allowances (GET
+  // /entitlements/me) — the server decides; this only reads it.
+  entitlements: {
+    me: (token?: string) =>
+      fetch(`${BASE_URL}/entitlements/me`, { headers: getHeaders(token) })
+        .then((r) => handleResponse<{ data?: MyEntitlements }>(r))
+        .then((r) => (r?.data ?? { category: null, unrestricted: true }) as MyEntitlements),
+  },
+
+  // POST /materials/:id/download — a download link, counted against a
+  // student's monthly downloads. `requestKey` (one per click) makes a retry
+  // of the same click free.
+  materials: {
+    download: (id: string, requestKey: string, token?: string) =>
+      fetch(`${BASE_URL}/materials/${encodeURIComponent(id)}/download`, {
+        method: 'POST',
+        headers: { ...(getHeaders(token) as Record<string, string>), 'Idempotency-Key': requestKey },
+      })
+        .then((r) =>
+          handleResponse<{ data?: { url: string; title: string; allowance: Allowance | null; duplicate: boolean } }>(r),
+        )
+        .then((r) => r?.data as { url: string; title: string; allowance: Allowance | null; duplicate: boolean }),
+  },
+
+  // Platform Settings (admin): student entitlements and their history.
+  platformSettings: {
+    get: (token?: string) =>
+      fetch(`${BASE_URL}/admin/settings/platform`, { headers: getHeaders(token) })
+        .then((r) => handleResponse<{ data?: PlatformSettingsData }>(r))
+        .then((r) => r?.data as PlatformSettingsData),
+    update: (entitlements: Record<string, unknown>, token?: string) =>
+      fetch(`${BASE_URL}/admin/settings/platform`, {
+        method: 'PATCH',
+        headers: getHeaders(token),
+        body: JSON.stringify({ entitlements }),
+      })
+        .then((r) => handleResponse<{ data?: { entitlements: EntitlementSettings } }>(r))
+        .then((r) => r?.data?.entitlements as EntitlementSettings),
+    history: (token?: string) =>
+      fetch(`${BASE_URL}/admin/settings/history`, { headers: getHeaders(token) })
+        .then((r) => handleResponse<{ data?: SettingsHistoryEntry[] }>(r))
+        .then((r) => r?.data ?? []),
+    setPhysicalEnrollment: (
+      studentId: string,
+      body: { verified: boolean; expiresAt?: string | null; note?: string },
+      token?: string,
+    ) =>
+      fetch(`${BASE_URL}/admin/users/${encodeURIComponent(studentId)}/physical-enrollment`, {
+        method: 'PATCH',
+        headers: getHeaders(token),
+        body: JSON.stringify(body),
+      }).then((r) => handleResponse<{ data?: unknown }>(r)),
   },
 
   // Student attendance & academic performance reports (GET /reports/*),

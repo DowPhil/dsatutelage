@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   FileText,
   Video,
@@ -31,9 +31,11 @@ import {
   categoryLabel,
 } from '@/lib/coursesStore'
 import { getUser, getToken } from '@/lib/auth'
-import { useCachedUser } from '@/lib/useCachedUser'
-import { capFor } from '@/lib/access'
-import { CapReachedCard } from '@/components/dashboard/LockedNotice'
+import {
+  useEntitlements,
+  refreshEntitlements,
+  resetDate,
+} from '@/components/dashboard/useEntitlements'
 import { isDemoToken } from '@/lib/demoAccounts'
 import { dsaApi } from '@/lib/api'
 import {
@@ -121,6 +123,9 @@ function MaterialIcon({ type }: { type: MaterialType }) {
   )
 }
 
+/** For useSyncExternalStore reads that never change after the first render. */
+const noSubscription = () => () => {}
+
 export default function CourseMaterials({
   mode,
   studentKey,
@@ -130,8 +135,12 @@ export default function CourseMaterials({
   studentKey?: string
   track?: string
 }) {
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => setMounted(true), [])
+  // Client-only content (it reads browser storage): render after hydration.
+  const mounted = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  )
 
   if (!mounted) {
     return (
@@ -581,9 +590,13 @@ function StudentMaterials({
   track: string
   studentKey: string
 }) {
-  const cachedUser = useCachedUser()
+  const { entitlements } = useEntitlements()
   const [live, setLive] = useState(false)
   const [loading, setLoading] = useState(true)
+  // The plan does not include study materials (the server said so).
+  const [blocked, setBlocked] = useState('')
+  const [downloading, setDownloading] = useState<string | null>(null)
+  const [downloadMsg, setDownloadMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const [groups, setGroups] = useState<MatGroup[]>([])
   const [progress, setProgress] = useState(0)
   const [done, setDone] = useState<Set<string>>(new Set())
@@ -641,8 +654,17 @@ function StudentMaterials({
         setLive(true)
         setLoading(false)
         return
-      } catch {
-        /* fall through to local */
+      } catch (e) {
+        // Not in the plan: say so — never fall back to stored demo material.
+        const msg = e instanceof Error ? e.message : ''
+        if (/not included in your/i.test(msg)) {
+          setBlocked(msg)
+          setGroups([])
+          setLive(true)
+          setLoading(false)
+          return
+        }
+        /* otherwise fall through to local */
       }
     }
     const local = getMaterialsForTrack(track)
@@ -689,19 +711,31 @@ function StudentMaterials({
     )
   }
 
-  // Free/portal students see a capped number of materials (unlimited for
-  // tutorial students, and while the paywall is off). Spend the budget across
-  // courses in order.
-  const matCap = capFor('materials', cachedUser)
-  let matBudget = matCap
-  const cappedGroups = groups.map((g) => {
-    if (matBudget === Infinity) return g
-    const take = g.materials.slice(0, Math.max(0, matBudget))
-    matBudget -= take.length
-    return { ...g, materials: take }
-  })
-  const totalMaterials = groups.reduce((n, g) => n + g.materials.length, 0)
-  const materialsCapped = matCap !== Infinity && totalMaterials > matCap
+  // Download through the server, which counts it against the month's
+  // allowance (one key per click, so a retried request is not counted twice).
+  const download = async (m: CourseMaterial) => {
+    setDownloading(m.id)
+    setDownloadMsg(null)
+    const key =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${m.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    try {
+      const res = await dsaApi.materials.download(m.id, key)
+      window.open(res.url, '_blank', 'noopener')
+      if (res.allowance && res.allowance.remaining != null) {
+        setDownloadMsg({ ok: true, text: `Downloading. ${res.allowance.remaining} download${res.allowance.remaining === 1 ? '' : 's'} left this month.` })
+      }
+    } catch (e) {
+      setDownloadMsg({ ok: false, text: e instanceof Error ? e.message : 'Could not download this file.' })
+    } finally {
+      setDownloading(null)
+      void refreshEntitlements()
+    }
+  }
+
+  const dl = entitlements && !entitlements.unrestricted ? entitlements.materials : undefined
+  const canDownload = !dl || dl.download
 
   return (
     <div className='space-y-5'>
@@ -733,13 +767,44 @@ function StudentMaterials({
         </div>
       </Card>
 
-      {groups.length === 0 ? (
+      {dl && dl.download && dl.downloads.limit != null && (
+        <div
+          role='status'
+          className={`rounded-2xl border px-4 py-3 text-[11px] font-bold ${
+            (dl.downloads.remaining ?? 0) <= 0 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-100 bg-white text-slate-600'
+          }`}
+        >
+          Downloads this month: <b>{dl.downloads.used}</b> of <b>{dl.downloads.limit}</b> used
+          {(dl.downloads.remaining ?? 0) <= 0 ? ' — none left' : ` · ${dl.downloads.remaining} left`}. Resets on{' '}
+          {resetDate(dl.downloads.resetsAt, entitlements?.timezone)}. Viewing a material does not count.
+          {(dl.downloads.remaining ?? 0) <= 0 && entitlements?.canUpgrade && (
+            <a href='/dashboard?tab=unlock' className='ml-2 underline'>Upgrade for more</a>
+          )}
+        </div>
+      )}
+      {downloadMsg && (
+        <p
+          role={downloadMsg.ok ? 'status' : 'alert'}
+          className={`rounded-xl px-3 py-2 text-[11px] font-bold ${downloadMsg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}
+        >
+          {downloadMsg.text}
+        </p>
+      )}
+
+      {blocked ? (
+        <div className='rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center' role='status'>
+          <p className='text-xs font-black text-amber-800'>{blocked}</p>
+          <a href='/dashboard?tab=unlock' className='mt-2 inline-block text-[11px] font-black uppercase text-[#002EFF] underline'>
+            See plans
+          </a>
+        </div>
+      ) : groups.length === 0 ? (
         <p className='text-xs font-bold text-slate-400 py-8 text-center'>
           No materials published for your courses yet.
         </p>
       ) : (
         <>
-        {cappedGroups.map((g) => (
+        {groups.map((g) => (
           <div key={g.course.id} className='space-y-2'>
             <h3 className='text-[11px] font-black uppercase tracking-widest text-slate-500'>
               {g.course.category
@@ -767,11 +832,21 @@ function StudentMaterials({
                     href={m.url}
                     target='_blank'
                     rel='noreferrer'
-                    className='flex items-center gap-1 px-3 h-8 rounded-lg bg-blue-50 text-[#002EFF] text-[10px] font-black uppercase'
+                    className='flex items-center gap-1 px-3 h-8 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-black uppercase'
                   >
-                    {m.isDownloadable ? <Download size={13} /> : <Eye size={13} />}
-                    {m.isDownloadable ? 'Download' : 'View'}
+                    <Eye size={13} /> View
                   </a>
+                  {m.isDownloadable && m.type !== 'link' && live && canDownload && (
+                    <button
+                      type='button'
+                      onClick={() => download(m)}
+                      disabled={downloading === m.id}
+                      className='flex items-center gap-1 px-3 h-8 rounded-lg bg-blue-50 text-[#002EFF] text-[10px] font-black uppercase disabled:opacity-60'
+                    >
+                      {downloading === m.id ? <Loader2 size={13} className='animate-spin' /> : <Download size={13} />}
+                      Download
+                    </button>
+                  )}
                   <button
                     onClick={() => markComplete(m.id)}
                     className={`p-1.5 ${completed ? 'text-emerald-600' : 'text-slate-300 hover:text-slate-500'}`}
@@ -788,9 +863,6 @@ function StudentMaterials({
             })}
           </div>
         ))}
-        {materialsCapped && (
-          <CapReachedCard what='learning materials' cap={matCap} />
-        )}
         </>
       )}
 
