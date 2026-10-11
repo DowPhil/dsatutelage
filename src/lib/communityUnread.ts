@@ -105,7 +105,8 @@ class UnreadStore {
           dsaApi.community.summary(token),
         ])
         if (token !== this.token) return
-        const list = rows as Record<string, unknown>[]
+        // Rooms you were removed from are listed (to rejoin) but not yours.
+        const list = (rows as Record<string, unknown>[]).filter((r) => !r.removed)
         this.tracker.setRooms(
           list.map((r) => String(r.id ?? r.channelId ?? '')).filter(Boolean),
           list.filter((r) => r.muted).map((r) => String(r.id ?? r.channelId)),
@@ -154,6 +155,11 @@ class UnreadStore {
     this.emit()
   }
 
+  // Removed from a room: it leaves the counts.
+  private onRemoved = () => {
+    void this.sync(true)
+  }
+
   private onChannelsChanged = () => {
     this.socket?.emit('watch', () => {})
     void this.sync(true)
@@ -183,6 +189,7 @@ class UnreadStore {
       s.on('channel:activity', this.onActivity)
       s.on('channel:read', this.onRead)
       s.on('channels:changed', this.onChannelsChanged)
+      s.on('channel:removed', this.onRemoved)
     }
     this.poll = setInterval(() => {
       if (document.hidden) return
@@ -206,6 +213,7 @@ class UnreadStore {
       s.off('channel:activity', this.onActivity)
       s.off('channel:read', this.onRead)
       s.off('channels:changed', this.onChannelsChanged)
+      s.off('channel:removed', this.onRemoved)
       releaseRealtime()
     }
     this.socket = null

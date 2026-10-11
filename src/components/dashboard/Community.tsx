@@ -383,6 +383,12 @@ export default function Community({
   // etc.). Students see General + their programme's; tutors/admin see them all.
   // The rooms as the server lists them; `channels` (below) adds live counts.
   const [rawChannels, setChannels] = useState<CommunityChannel[]>([])
+  // Rooms this student was removed from: listed so they can rejoin, but
+  // nothing in them is fetched (the server would refuse it anyway).
+  const removedRoomsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    removedRoomsRef.current = new Set(rawChannels.filter((c) => c.removed).map((c) => c.id))
+  }, [rawChannels])
   const [activeChannel, setActiveChannel] = useState('general')
   const [membersOpen, setMembersOpen] = useState(false)
   const [members, setMembers] = useState<
@@ -760,6 +766,14 @@ export default function Community({
     // Detect whether we're loading a different channel.
     const switching = msgChannelRef.current !== channel
 
+    // Removed from this room: show the rejoin prompt, fetch nothing.
+    if (removedRoomsRef.current.has(channel)) {
+      msgChannelRef.current = channel
+      setMessages([])
+      setLoading(false)
+      return
+    }
+
     if (initial || switching) {
       setLoading(true)
     }
@@ -837,6 +851,7 @@ export default function Community({
   // Keep the channel lock state in sync (best-effort: if the settings endpoint
   // isn't live yet, treat the channel as unlocked so posting still works).
   const loadSettings = useCallback(async () => {
+    if (removedRoomsRef.current.has(activeChannel)) return
     try {
       const s = await dsaApi.community.getSettings(token, activeChannel)
       setLockedState(!!s?.locked)
@@ -1898,6 +1913,7 @@ const loadChannels = useCallback(async () => {
       a.id === b.id &&
       a.name === b.name &&
       !!a.muted === !!b.muted &&
+      !!a.removed === !!b.removed &&
       (a.departments ?? []).join() === (b.departments ?? []).join() &&
       (a.tutors ?? []).join() === (b.tutors ?? []).join()
     if (
@@ -1923,6 +1939,44 @@ const loadChannels = useCallback(async () => {
     const poll = setInterval(() => { if (!document.hidden) loadChannels() }, 30000)
     return () => clearInterval(poll)
   }, [loadChannels])
+
+  // Removed from a room while it was open: the server says so at once.
+  useEffect(() => {
+    const s = socketRef.current
+    if (!s) return
+    const onRemoved = (p: { channelId?: string }) => {
+      if (p?.channelId) removedRoomsRef.current.add(String(p.channelId))
+      void loadChannels()
+      // Clears the conversation if it was the room on screen.
+      void load(false)
+    }
+    s.on('channel:removed', onRemoved)
+    return () => {
+      s.off('channel:removed', onRemoved)
+    }
+  }, [loadChannels, load, authToken])
+
+  // Rejoin a room you were removed from. The server re-checks that you still
+  // meet the room's requirements; if not, it says so and nothing changes.
+  const activeRemoved = !!rawChannels.find((c) => c.id === activeChannel)?.removed
+  const [rejoining, setRejoining] = useState(false)
+  const rejoin = useCallback(async () => {
+    setRejoining(true)
+    setError(null)
+    try {
+      await dsaApi.community.join(activeChannel, token)
+      removedRoomsRef.current.delete(activeChannel)
+      await loadChannels()
+      await Promise.all([load(true), loadSettings()])
+      void communityUnread.sync(true)
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : 'Could not rejoin this room.',
+      )
+    } finally {
+      setRejoining(false)
+    }
+  }, [activeChannel, token, loadChannels, load, loadSettings])
 
   const createChannel = useCallback(async () => {
     const name = newName.trim()
@@ -2593,9 +2647,11 @@ const loadChannels = useCallback(async () => {
                     </span>
                     <span className='mt-0.5 flex items-center gap-2'>
                       <span className='min-w-0 flex-1 truncate text-[10px] font-medium text-slate-400'>
-                        {c.lastMessageText
-                          ? `${c.lastMessageSender ? `${c.lastMessageSender}: ` : ''}${c.lastMessageText}`
-                          : 'No messages yet'}
+                        {c.removed
+                          ? 'You were removed · tap to rejoin'
+                          : c.lastMessageText
+                            ? `${c.lastMessageSender ? `${c.lastMessageSender}: ` : ''}${c.lastMessageText}`
+                            : 'No messages yet'}
                       </span>
                       {!on && !!c.unread && (
                         <span className='min-w-[18px] shrink-0 rounded-full bg-[#002EFF] px-1.5 py-0.5 text-center text-[9px] font-black tabular-nums text-white'>
@@ -2796,6 +2852,15 @@ const loadChannels = useCallback(async () => {
 
         {/* Messages, with the panels floating over them */}
         <div className='relative min-h-0 flex-1 bg-[#F4F6FB]'>
+          {activeRemoved && (
+            <div className='absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-[#F4F6FB] p-6 text-center'>
+              <UserMinus size={22} className='text-slate-400' />
+              <p className='text-[12px] font-black text-slate-700'>You were removed from this room</p>
+              <p className='max-w-xs text-[11px] font-medium text-slate-500'>
+                You can rejoin while you still meet its requirements.
+              </p>
+            </div>
+          )}
           {(membersOpen || bellOpen || searchOpen) && (
             <div className='absolute inset-x-2 top-2 z-30 max-h-[85%] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl sm:inset-x-auto sm:right-3 sm:w-80'>
               {membersOpen && membersPanel}
@@ -3096,7 +3161,22 @@ const loadChannels = useCallback(async () => {
         {error && <p className='px-4 pt-2 text-[11px] font-semibold text-rose-600'>{error}</p>}
 
         {/* Composer */}
-        {postingBlocked ? (
+        {activeRemoved ? (
+          <div className='border-t border-slate-100 p-3'>
+            <div className='flex flex-wrap items-center gap-2 rounded-2xl bg-zinc-50 px-4 py-3 text-[11px] font-bold text-zinc-500'>
+              <UserMinus size={14} className='shrink-0 text-zinc-400' />
+              <span className='flex-1'>You can read and post here again after rejoining.</span>
+              <button
+                type='button'
+                onClick={rejoin}
+                disabled={rejoining}
+                className='rounded-xl bg-[#002EFF] px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white transition-all hover:bg-blue-700 disabled:opacity-60'
+              >
+                {rejoining ? 'Rejoining…' : 'Rejoin'}
+              </button>
+            </div>
+          </div>
+        ) : postingBlocked ? (
           <div className='border-t border-slate-100 p-3'>
             <div className='flex items-center gap-2 rounded-2xl bg-zinc-50 px-4 py-3 text-[11px] font-bold text-zinc-500'>
               <Lock size={14} className='shrink-0 text-zinc-400' />

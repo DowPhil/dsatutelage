@@ -26,6 +26,8 @@ export interface CommunityChannel {
   mentions?: number
   /** You asked this channel to stay quiet. */
   muted?: boolean
+  /** You were removed from this room; you may rejoin while you qualify. */
+  removed?: boolean
   mutedUntil?: number | null
   /** A one-line summary of the last message, for the channel list. */
   lastMessageText?: string | null
@@ -90,6 +92,7 @@ export function toChannel(raw: Record<string, unknown>): CommunityChannel {
     unread: typeof raw.unread === 'number' ? raw.unread : 0,
     mentions: typeof raw.mentions === 'number' ? raw.mentions : 0,
     muted: !!raw.muted,
+    removed: !!raw.removed,
     mutedUntil: raw.mutedUntil ? Date.parse(String(raw.mutedUntil)) || null : null,
     lastMessageText: raw.lastMessageText ? String(raw.lastMessageText) : null,
     lastMessageSender: raw.lastMessageSender

@@ -1652,6 +1652,19 @@ export const dsaApi = {
         )
         .then((res) => (Array.isArray(res) ? res : (res?.data ?? []))),
 
+    // POST /community/channels/:id/join — rejoin a room you were removed
+    // from. The server re-checks the room's rules (403 if you no longer
+    // qualify).
+    join: (channelId: string, token?: string) =>
+      fetch(
+        `${BASE_URL}/community/channels/${encodeURIComponent(channelId)}/join`,
+        { method: 'POST', headers: getHeaders(token) },
+      )
+        .then((r) =>
+          handleResponse<{ data?: { channelId: string; rejoined: boolean } }>(r),
+        )
+        .then((r) => r?.data ?? { channelId, rejoined: false }),
+
     // GET /community/channels/summary — per channel: unread, mentions and
     // the last message. `channels` limits it to those ids.
     summary: (token?: string, channels?: string[]) =>
