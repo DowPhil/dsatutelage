@@ -73,8 +73,10 @@ describe('Attendance & Performance screen', () => {
   it('no sessions: an empty state and no percentage', async () => {
     const net = fakeNetwork()
     net.on('GET', /\/api\/reports\/filters/, { body: { success: true, data: filters } })
-    const empty = attendance()
-    empty.overall = { ...empty.overall, sessionsRecorded: 0, eligibleSessions: 0, present: 0, attendanceRate: null, averageStudentRate: null, trackedStudents: 0 }
+    const full = attendance()
+    const empty = attendance({
+      overall: { ...full.overall, sessionsRecorded: 0, eligibleSessions: 0, present: 0, attendanceRate: null, averageStudentRate: null, trackedStudents: 0 },
+    })
     net.on('GET', /\/api\/reports\/attendance/, { body: { success: true, data: empty } })
     render(<StudentReports />)
     expect(await screen.findByText(/No attendance sessions were recorded/)).toBeTruthy()
