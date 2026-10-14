@@ -349,6 +349,8 @@ import { isDemoToken } from '@/lib/demoAccounts'
 import { dsaApi } from '@/lib/api'
 import { categoryLabel } from '@/lib/coursesStore'
 import type { CourseCategory } from '@/lib/types'
+import { useCachedUser } from '@/lib/useCachedUser'
+import { planSummary } from '@/lib/subscription'
 
 function isLive(): boolean {
   const t = getToken()
@@ -456,6 +458,11 @@ function AttendanceSkeleton() {
 }
 
 export default function StudentAttendance() {
+  // Attendance is a paid-plan feature. A free (or lapsed) plan sees it locked;
+  // provisional (pending receipt) and active paid plans get in. The server
+  // enforces check-in too.
+  const plan = planSummary(useCachedUser())
+  const attendanceOpen = plan.status === 'active' || plan.status === 'pending'
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(true)
   const [live, setLive] = useState(false)
@@ -593,8 +600,8 @@ export default function StudentAttendance() {
         </div>
         <Badge
           className={`text-[8px] font-black shrink-0 ${
-            live 
-              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400' 
+            live
+              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
               : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
           }`}
         >
@@ -602,6 +609,26 @@ export default function StudentAttendance() {
         </Badge>
       </div>
 
+      {!attendanceOpen ? (
+        <Card className='rounded-3xl border-none shadow-sm bg-white dark:bg-slate-900 p-8 text-center'>
+          <div className='mx-auto mb-3 h-12 w-12 rounded-2xl bg-amber-50 dark:bg-amber-950/40 flex items-center justify-center'>
+            <Lock size={22} className='text-amber-600 dark:text-amber-400' />
+          </div>
+          <p className='text-sm font-black text-slate-800 dark:text-slate-100'>
+            Attendance is for paid plans
+          </p>
+          <p className='mt-1 text-[11px] font-bold text-slate-400 dark:text-slate-500 max-w-sm mx-auto'>
+            Upgrade your plan to mark yourself present and track your attendance.
+          </p>
+          <a
+            href='/dashboard?tab=unlock'
+            className='mt-4 inline-flex items-center gap-1.5 h-10 px-5 rounded-xl bg-[#002EFF] text-white font-black text-[11px] uppercase tracking-wide hover:bg-blue-700'
+          >
+            See plans
+          </a>
+        </Card>
+      ) : (
+      <>
       {/* Overall stats */}
       <div className='grid grid-cols-3 gap-4'>
         <Tile label='Attendance Rate' value={`${stats.rate}%`} tint='blue' icon={CalendarCheck} />
@@ -703,6 +730,8 @@ export default function StudentAttendance() {
             </span>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   )

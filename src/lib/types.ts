@@ -161,6 +161,10 @@ export interface CourseMaterial {
   classLevel?: string
   description?: string
   isDownloadable: boolean
+  /** Paid materials are locked to students on a paid plan. */
+  paid?: boolean
+  /** True when the current viewer (a free-plan student) cannot open it. */
+  locked?: boolean
   durationLabel?: string // e.g. "12:40" for video/recording
   createdAt: string
 }
@@ -255,6 +259,8 @@ export interface Quiz {
   //  'free'   — public; anyone with the `link` takes it with just name + age.
   // Free quizzes are always open to everyone (track is forced to 'all').
   accessMode?: 'portal' | 'free'
+  /** Portal quizzes only: locked to paid-plan students when true. */
+  paid?: boolean
 }
 
 /** Result returned by a public (free) quiz submission. */

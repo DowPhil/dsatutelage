@@ -854,6 +854,7 @@ export default function LibraryPage(_props?: { courseId?: string }) {
     url: string
     description: string
     isDownloadable: boolean
+    paid: boolean
     fileSizeBytes?: number
     durationSeconds?: number
   }>({
@@ -862,6 +863,7 @@ export default function LibraryPage(_props?: { courseId?: string }) {
     url: '',
     description: '',
     isDownloadable: true,
+    paid: false,
   })
 
   const [fileToUpload, setFileToUpload] = useState<File | null>(null)
@@ -1026,6 +1028,7 @@ export default function LibraryPage(_props?: { courseId?: string }) {
           classLevel,
           type: formData.type,
           isDownloadable: formData.isDownloadable,
+          paid: formData.paid,
           description: formData.description,
           durationSeconds: formData.durationSeconds,
         },
@@ -1085,6 +1088,7 @@ export default function LibraryPage(_props?: { courseId?: string }) {
       url: '',
       description: '',
       isDownloadable: true,
+      paid: false,
     })
     setFileToUpload(null)
     setLastUpload(null)
@@ -1445,6 +1449,24 @@ export default function LibraryPage(_props?: { courseId?: string }) {
                     Is Downloadable
                   </label>
                 </div>
+              </div>
+
+              <div className='rounded-xl border border-slate-200 p-3'>
+                <label className='flex items-start gap-2 cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={formData.paid}
+                    onChange={(e) =>
+                      setFormData({ ...formData, paid: e.target.checked })
+                    }
+                    className='mt-0.5 rounded text-blue-600 focus:ring-blue-500 w-4 h-4'
+                  />
+                  <span className='text-xs text-slate-700'>
+                    <span className='font-semibold'>Paid material</span> — everyone
+                    sees it listed, but only students on a paid plan can open or
+                    download it. Leave off for a free material open to all.
+                  </span>
+                </label>
               </div>
 
               {/* Direct File Upload integration via S3 Presigned URL */}

@@ -150,6 +150,7 @@ export function buildMaterialPayload(
   draft: MaterialDraft & {
     type: string
     isDownloadable: boolean
+    paid?: boolean
     description?: string
     durationSeconds?: number
   },
@@ -164,6 +165,7 @@ export function buildMaterialPayload(
     type: draft.type,
     url,
     isDownloadable: draft.isDownloadable,
+    paid: draft.paid === true,
     ...(draft.description ? { description: draft.description } : {}),
     ...(draft.durationSeconds ? { durationSeconds: draft.durationSeconds } : {}),
     ...(classLevel ? { classLevel } : {}),

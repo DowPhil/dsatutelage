@@ -166,6 +166,8 @@ export default function QuizBuilder() {
   const [maxAttempts, setMaxAttempts] = useState('1')
   const [showResults, setShowResults] = useState(true)
   const [showCorrections, setShowCorrections] = useState(true)
+  // Portal quizzes only: locked to paid-plan students when true.
+  const [paid, setPaid] = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(true)
   const [blocks, setBlocks] = useState<SubjectBlock[]>([])
   // Subjects that actually have uploaded questions (any label a tutor used),
@@ -408,6 +410,8 @@ export default function QuizBuilder() {
       title: title.trim(),
       description: description.trim() || title.trim(),
       accessMode,
+      // Paid only applies to portal quizzes; public-link quizzes are open to all.
+      paid: isFree ? false : paid,
       maxAttempts: Math.max(0, parseInt(maxAttempts, 10) || 0),
       showResults,
       showCorrections,
@@ -492,6 +496,7 @@ export default function QuizBuilder() {
       setMaxAttempts('1')
       setShowResults(true)
       setShowCorrections(true)
+      setPaid(false)
       setBlocks([])
       setEditingId(null)
       setStep(0)
@@ -543,6 +548,7 @@ export default function QuizBuilder() {
     setShowResults(q.showResults !== false)
     setShowCorrections(q.showCorrections !== false)
     setShowLeaderboard(q.showLeaderboard !== false)
+    setPaid(q.paid === true)
     setBlocks([])
     // Show the existing shareable link when re-editing a free quiz.
     const existingSlug = str(q.publicLink ?? q.link ?? '')
@@ -975,6 +981,23 @@ export default function QuizBuilder() {
               className='h-4 w-4 accent-[#002EFF]'
             />
           </label>
+          {accessMode === 'portal' && (
+            <label className='flex items-start justify-between gap-3 cursor-pointer rounded-xl bg-amber-50 px-3 py-2.5'>
+              <span className='text-[11px] font-bold text-amber-800'>
+                Paid quiz
+                <span className='block text-[10px] font-medium text-amber-600'>
+                  Everyone sees it, but only paid-plan students can take it. Off =
+                  free for all students.
+                </span>
+              </span>
+              <input
+                type='checkbox'
+                checked={paid}
+                onChange={(e) => setPaid(e.target.checked)}
+                className='mt-0.5 h-4 w-4 accent-[#002EFF]'
+              />
+            </label>
+          )}
         </div>
 
         )}

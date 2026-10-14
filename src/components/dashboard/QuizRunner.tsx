@@ -9,7 +9,6 @@ import {
   Clock,
   Play,
   CheckCircle2,
-  XCircle,
   ArrowLeft,
   AlertTriangle,
   Download,
@@ -40,7 +39,6 @@ import { getToken, getUser } from '@/lib/auth'
 import {
   useEntitlements,
   refreshEntitlements,
-  resetDate,
 } from '@/components/dashboard/useEntitlements'
 import { resolveStudentProfile } from '@/lib/studentProfile'
 import { quizMatchesProfile } from '@/lib/quizAudience'
@@ -129,6 +127,10 @@ function isOffline(err?: unknown): boolean {
 
 export default function QuizRunner() {
   const token = getToken() ?? undefined
+  const { entitlements: ent } = useEntitlements()
+  // A free-plan student: paid quizzes are shown locked. Staff/tutors (and paid
+  // students) are never on the free plan here.
+  const freePlan = !!ent && !ent.unrestricted && ent.category === 'free'
   const [view, setView] = useState<'list' | 'take' | 'result' | 'history'>('list')
   const [quizzes, setQuizzes] = useState<Record<string, unknown>[]>([])
   const [myResults, setMyResults] = useState<Record<string, unknown>[]>([])
@@ -154,6 +156,10 @@ export default function QuizRunner() {
   const sessionIdRef = useRef<string | null>(null)
   const [showWarning, setShowWarning] = useState(false)
   const [showCorrections, setShowCorrections] = useState(false)
+  // The full Correction Page opened from the result screen's Review button.
+  const [reviewData, setReviewData] = useState<CorrectionsData | null>(null)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
   // Pagination while taking: how many questions to show per page (0 = all).
   const [perPage, setPerPage] = useState(0)
   const [page, setPage] = useState(0)
@@ -164,6 +170,26 @@ export default function QuizRunner() {
   const [board, setBoard] = useState<LeaderboardRow[]>([])
   const [boardLoading, setBoardLoading] = useState(false)
   const MAX_BREACHES = 5
+
+  // Open the full Correction Page for the quiz just submitted (same view as the
+  // history "View corrections"), fed by GET /quizzes/:id/corrections/me.
+  const openResultReview = async () => {
+    const quizId = str(quiz?.id ?? quiz?._id)
+    if (!quizId) return
+    setReviewLoading(true)
+    setReviewError(null)
+    try {
+      const data = (await dsaApi.quizzes.myCorrections(
+        quizId,
+        token,
+      )) as CorrectionsData
+      setReviewData(data)
+    } catch (e) {
+      setReviewError(e instanceof Error ? e.message : 'Could not load corrections.')
+    } finally {
+      setReviewLoading(false)
+    }
+  }
 
   const loadList = useCallback(async () => {
     setLoading(true)
@@ -560,6 +586,12 @@ export default function QuizRunner() {
   }
 
   if (view === 'result' && result) {
+    // The Review button opens the full Correction Page over the result screen.
+    if (reviewData) {
+      return (
+        <QuizCorrections data={reviewData} onBack={() => setReviewData(null)} />
+      )
+    }
     // Compute from marks so it's correct regardless of how the API scales
     // `percentage` (it returns a 0–1 ratio, not 0–100).
     const pct =
@@ -730,10 +762,16 @@ export default function QuizRunner() {
         <div className='grid grid-cols-2 gap-2'>
           {canSeeCorrections ? (
             <button
-              onClick={() => setShowCorrections((v) => !v)}
-              className='flex items-center justify-center gap-2 h-12 rounded-2xl bg-slate-900 text-white font-black text-[11px] uppercase tracking-wide active:scale-[0.98]'
+              onClick={openResultReview}
+              disabled={reviewLoading}
+              className='flex items-center justify-center gap-2 h-12 rounded-2xl bg-slate-900 text-white font-black text-[11px] uppercase tracking-wide active:scale-[0.98] disabled:opacity-60'
             >
-              <Eye size={15} /> {showCorrections ? 'Hide' : 'Review'}
+              {reviewLoading ? (
+                <Loader2 size={15} className='animate-spin' />
+              ) : (
+                <Eye size={15} />
+              )}
+              Review
             </button>
           ) : (
             <div />
@@ -776,27 +814,8 @@ export default function QuizRunner() {
           />
         )}
 
-        {/* Corrections — only when allowed and the student chooses to view them */}
-        {canSeeCorrections && showCorrections && (
-          <div className='space-y-2'>
-            {result.breakdown?.map((b, i) => (
-              <Card
-                key={b.questionId || i}
-                className='p-3 rounded-2xl border-none shadow-sm bg-white flex items-start gap-2'
-              >
-                {b.isCorrect ? (
-                  <CheckCircle2 size={16} className='text-emerald-500 mt-0.5 shrink-0' />
-                ) : (
-                  <XCircle size={16} className='text-rose-500 mt-0.5 shrink-0' />
-                )}
-                <div className='min-w-0 flex-1'>
-                  <RichText className='text-[12px] font-medium text-slate-700'>
-                    {b.questionText || `Question ${i + 1}`}
-                  </RichText>
-                </div>
-              </Card>
-            ))}
-          </div>
+        {reviewError && (
+          <p className='text-[11px] font-bold text-rose-600 px-1'>{reviewError}</p>
         )}
       </div>
     )
@@ -1221,7 +1240,6 @@ export default function QuizRunner() {
       )}
 
       {error && <p className='text-[11px] font-bold text-rose-600 px-1'>{error}</p>}
-      <QuizAllowance />
       {loading ? (
         <div className='py-10 flex justify-center'>
           <Loader2 className='animate-spin text-[#002EFF]' />
@@ -1247,6 +1265,7 @@ export default function QuizRunner() {
           const maxAttempts = Number(q.maxAttempts) || 0
           const used = attemptsByQuiz[qid] || 0
           const limitReached = maxAttempts > 0 && used >= maxAttempts
+          const paidLocked = freePlan && q.paid === true
           return (
             <Card
               key={qid}
@@ -1257,6 +1276,11 @@ export default function QuizRunner() {
                   {/* truncate must sit on the text itself — a flex parent can't
                       truncate, which pushed long titles past the viewport. */}
                   <span className='truncate'>{str(q.title)}</span>
+                  {q.paid === true && (
+                    <span className='text-[8px] font-black uppercase text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded shrink-0'>
+                      Paid
+                    </span>
+                  )}
                   {used > 0 && (
                     <span className='text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded shrink-0'>
                       Taken
@@ -1271,7 +1295,15 @@ export default function QuizRunner() {
                   {maxAttempts > 0 && ` · ${used}/${maxAttempts} attempt${maxAttempts === 1 ? '' : 's'}`}
                 </p>
               </div>
-              {limitReached ? (
+              {paidLocked ? (
+                <a
+                  href='/dashboard?tab=unlock'
+                  className='shrink-0 flex items-center gap-1.5 h-10 px-4 bg-amber-50 text-amber-700 rounded-xl font-black text-[11px] uppercase tracking-wide hover:bg-amber-100 transition-colors'
+                  title='This quiz is for paid plans'
+                >
+                  <Lock size={14} /> Upgrade
+                </a>
+              ) : limitReached ? (
                 <span
                   className='shrink-0 flex items-center gap-1.5 h-10 px-4 bg-slate-100 text-slate-400 rounded-xl font-black text-[11px] uppercase tracking-wide cursor-not-allowed'
                   title='You have used all your attempts for this quiz'
@@ -1442,44 +1474,3 @@ function QuizHistory({
   )
 }
 
-/**
- * This month's quiz and test allowance (from the server), above the list:
- * used, left, the limit and when it resets — and the way to upgrade once it is
- * used up. Nothing for unlimited plans, staff or tutors.
- */
-function QuizAllowance() {
-  const { entitlements: e } = useEntitlements()
-  if (!e || e.unrestricted || !e.quizzes) return null
-  const q = e.quizzes
-  if (!q.enabled) {
-    return (
-      <div className='mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] font-bold text-amber-800' role='status'>
-        Quizzes and tests are not included in your {e.label} plan.
-        {e.canUpgrade && ' Upgrade your plan to take them.'}
-      </div>
-    )
-  }
-  if (q.limit == null) return null
-  const out = (q.remaining ?? 0) <= 0
-  return (
-    <div
-      className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border px-4 py-3 ${
-        out ? 'border-rose-200 bg-rose-50' : 'border-slate-100 bg-white'
-      }`}
-      role='status'
-    >
-      <p className={`text-[11px] font-bold ${out ? 'text-rose-700' : 'text-slate-600'}`}>
-        Quizzes &amp; tests this month: <b>{q.used}</b> of <b>{q.limit}</b> used
-        {out ? ' — none left.' : ` · ${q.remaining} left.`} Resets on {resetDate(q.resetsAt, e.timezone)}.
-      </p>
-      {out && e.canUpgrade && (
-        <a
-          href='/dashboard?tab=unlock'
-          className='rounded-xl bg-[#002EFF] px-3 py-1.5 text-[10px] font-black uppercase text-white hover:bg-blue-700'
-        >
-          Upgrade
-        </a>
-      )}
-    </div>
-  )
-}

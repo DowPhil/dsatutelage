@@ -367,6 +367,10 @@ export interface CourseMaterial {
   description?: string
   orderIndex?: number
   isDownloadable?: boolean
+  /** Paid materials are locked to students on a paid plan. */
+  paid?: boolean
+  /** True when the current viewer (a free-plan student) cannot open it. */
+  locked?: boolean
   fileSizeBytes?: number
   durationSeconds?: number
   completed?: boolean
@@ -393,6 +397,7 @@ export interface CreateMaterialPayload {
   description?: string
   orderIndex?: number
   isDownloadable?: boolean
+  paid?: boolean
   fileSizeBytes?: number
   durationSeconds?: number
 }

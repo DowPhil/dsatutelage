@@ -16,6 +16,7 @@ import {
   Trash2,
   Loader2,
   BookOpen,
+  Lock,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -31,11 +32,7 @@ import {
   categoryLabel,
 } from '@/lib/coursesStore'
 import { getUser, getToken } from '@/lib/auth'
-import {
-  useEntitlements,
-  refreshEntitlements,
-  resetDate,
-} from '@/components/dashboard/useEntitlements'
+import { refreshEntitlements } from '@/components/dashboard/useEntitlements'
 import { isDemoToken } from '@/lib/demoAccounts'
 import { dsaApi } from '@/lib/api'
 import {
@@ -97,6 +94,8 @@ function mapMaterial(m: Record<string, unknown>): CourseMaterial {
     classLevel: m.classLevel ? String(m.classLevel) : undefined,
     description: m.description ? String(m.description) : undefined,
     isDownloadable: !!m.isDownloadable,
+    paid: m.paid === true,
+    locked: m.locked === true,
     durationLabel: m.durationLabel ? String(m.durationLabel) : undefined,
     createdAt: String(m.createdAt ?? ''),
   }
@@ -590,7 +589,6 @@ function StudentMaterials({
   track: string
   studentKey: string
 }) {
-  const { entitlements } = useEntitlements()
   const [live, setLive] = useState(false)
   const [loading, setLoading] = useState(true)
   // The plan does not include study materials (the server said so).
@@ -711,8 +709,8 @@ function StudentMaterials({
     )
   }
 
-  // Download through the server, which counts it against the month's
-  // allowance (one key per click, so a retried request is not counted twice).
+  // Download through the server. Free materials are open to all; paid ones are
+  // blocked for free-plan students (the server returns a 403 to upgrade).
   const download = async (m: CourseMaterial) => {
     setDownloading(m.id)
     setDownloadMsg(null)
@@ -723,9 +721,6 @@ function StudentMaterials({
     try {
       const res = await dsaApi.materials.download(m.id, key)
       window.open(res.url, '_blank', 'noopener')
-      if (res.allowance && res.allowance.remaining != null) {
-        setDownloadMsg({ ok: true, text: `Downloading. ${res.allowance.remaining} download${res.allowance.remaining === 1 ? '' : 's'} left this month.` })
-      }
     } catch (e) {
       setDownloadMsg({ ok: false, text: e instanceof Error ? e.message : 'Could not download this file.' })
     } finally {
@@ -733,9 +728,6 @@ function StudentMaterials({
       void refreshEntitlements()
     }
   }
-
-  const dl = entitlements && !entitlements.unrestricted ? entitlements.materials : undefined
-  const canDownload = !dl || dl.download
 
   return (
     <div className='space-y-5'>
@@ -767,21 +759,6 @@ function StudentMaterials({
         </div>
       </Card>
 
-      {dl && dl.download && dl.downloads.limit != null && (
-        <div
-          role='status'
-          className={`rounded-2xl border px-4 py-3 text-[11px] font-bold ${
-            (dl.downloads.remaining ?? 0) <= 0 ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-slate-100 bg-white text-slate-600'
-          }`}
-        >
-          Downloads this month: <b>{dl.downloads.used}</b> of <b>{dl.downloads.limit}</b> used
-          {(dl.downloads.remaining ?? 0) <= 0 ? ' — none left' : ` · ${dl.downloads.remaining} left`}. Resets on{' '}
-          {resetDate(dl.downloads.resetsAt, entitlements?.timezone)}. Viewing a material does not count.
-          {(dl.downloads.remaining ?? 0) <= 0 && entitlements?.canUpgrade && (
-            <a href='/dashboard?tab=unlock' className='ml-2 underline'>Upgrade for more</a>
-          )}
-        </div>
-      )}
       {downloadMsg && (
         <p
           role={downloadMsg.ok ? 'status' : 'alert'}
@@ -820,32 +797,48 @@ function StudentMaterials({
                 >
                   <MaterialIcon type={m.type} />
                   <div className='min-w-0 flex-1'>
-                    <p className='text-xs font-black text-gray-800 truncate'>
+                    <p className='text-xs font-black text-gray-800 truncate flex items-center gap-1.5'>
                       {m.title}
+                      {m.paid && (
+                        <span className='shrink-0 text-[8px] font-black uppercase text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded'>
+                          Paid
+                        </span>
+                      )}
                     </p>
                     <p className='text-[10px] font-bold text-slate-400'>
                       {TYPE_META[m.type].label}
                       {m.durationLabel ? ` · ${m.durationLabel}` : ''}
                     </p>
                   </div>
-                  <a
-                    href={m.url}
-                    target='_blank'
-                    rel='noreferrer'
-                    className='flex items-center gap-1 px-3 h-8 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-black uppercase'
-                  >
-                    <Eye size={13} /> View
-                  </a>
-                  {m.isDownloadable && m.type !== 'link' && live && canDownload && (
-                    <button
-                      type='button'
-                      onClick={() => download(m)}
-                      disabled={downloading === m.id}
-                      className='flex items-center gap-1 px-3 h-8 rounded-lg bg-blue-50 text-[#002EFF] text-[10px] font-black uppercase disabled:opacity-60'
+                  {m.locked ? (
+                    <a
+                      href='/dashboard?tab=unlock'
+                      className='flex items-center gap-1 px-3 h-8 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-black uppercase'
                     >
-                      {downloading === m.id ? <Loader2 size={13} className='animate-spin' /> : <Download size={13} />}
-                      Download
-                    </button>
+                      <Lock size={13} /> Upgrade to unlock
+                    </a>
+                  ) : (
+                    <>
+                      <a
+                        href={m.url}
+                        target='_blank'
+                        rel='noreferrer'
+                        className='flex items-center gap-1 px-3 h-8 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-black uppercase'
+                      >
+                        <Eye size={13} /> View
+                      </a>
+                      {m.isDownloadable && m.type !== 'link' && live && (
+                        <button
+                          type='button'
+                          onClick={() => download(m)}
+                          disabled={downloading === m.id}
+                          className='flex items-center gap-1 px-3 h-8 rounded-lg bg-blue-50 text-[#002EFF] text-[10px] font-black uppercase disabled:opacity-60'
+                        >
+                          {downloading === m.id ? <Loader2 size={13} className='animate-spin' /> : <Download size={13} />}
+                          Download
+                        </button>
+                      )}
+                    </>
                   )}
                   <button
                     onClick={() => markComplete(m.id)}
