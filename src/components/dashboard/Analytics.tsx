@@ -646,11 +646,16 @@ import {
   TrendingUp,
   CalendarCheck,
   ClipboardCheck,
-  BookOpen,
   Users,
   AlertTriangle,
   Award,
+  ListChecks,
+  Loader2,
+  History,
 } from 'lucide-react'
+import QuizCorrections, {
+  type CorrectionsData,
+} from '@/components/dashboard/QuizCorrections'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { getCourses, trackProgress } from '@/lib/coursesStore'
@@ -921,6 +926,29 @@ function StudentAnalytics({
   const [loading, setLoading] = useState(true)
   const [live, setLive] = useState(false)
   const [perf, setPerf] = useState<StudentPerf | null>(null)
+  // The student's recent quiz attempts (live only) and the corrections they are
+  // reviewing — so My Performance leads straight to the last tests' answers.
+  const [quizzes, setQuizzes] = useState<Record<string, unknown>[]>([])
+  const [reviewing, setReviewing] = useState<CorrectionsData | null>(null)
+  const [loadingId, setLoadingId] = useState<string | null>(null)
+  const [reviewErr, setReviewErr] = useState<string | null>(null)
+
+  const openCorrections = async (quizId: string) => {
+    if (!quizId) return
+    setLoadingId(quizId)
+    setReviewErr(null)
+    try {
+      const data = (await dsaApi.quizzes.myCorrections(
+        quizId,
+        getToken() ?? undefined,
+      )) as CorrectionsData
+      setReviewing(data)
+    } catch (e) {
+      setReviewErr(e instanceof Error ? e.message : 'Could not load corrections.')
+    } finally {
+      setLoadingId(null)
+    }
+  }
 
   const buildLocal = useCallback((): StudentPerf => {
     const groups = getAssignmentsForTrack(track)
@@ -972,11 +1000,15 @@ function StudentAnalytics({
     ;(async () => {
       if (isLive()) {
         try {
-          const [a, gradesRaw] = await Promise.all([
+          const [a, gradesRaw, quizRaw] = await Promise.all([
             dsaApi.analytics.me() as Promise<Record<string, unknown>>,
             dsaApi.assignments.myGrades() as Promise<Record<string, unknown>[]>,
+            dsaApi.quizzes
+              .myResults(getToken() ?? undefined)
+              .catch(() => []) as Promise<Record<string, unknown>[]>,
           ])
           if (cancelled) return
+          setQuizzes(Array.isArray(quizRaw) ? quizRaw : [])
           const perSubject = (
             (a.perSubject as Record<string, unknown>[]) ?? []
           )
@@ -1022,6 +1054,10 @@ function StudentAnalytics({
   }, [buildLocal])
 
   if (loading || !perf) return <StudentAnalyticsSkeleton />
+
+  if (reviewing) {
+    return <QuizCorrections data={reviewing} onBack={() => setReviewing(null)} />
+  }
 
   return (
     <div className='space-y-6'>
@@ -1071,22 +1107,12 @@ function StudentAnalytics({
         />
       </div>
 
-      <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
-        <p className='text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-2'>
-          <BookOpen size={13} className='text-[#002EFF] dark:text-blue-400' /> Average by subject
-        </p>
-        {perf.perSubject.length === 0 ? (
-          <p className='text-[11px] font-bold text-slate-400 dark:text-slate-500'>
-            No graded scores yet.
-          </p>
-        ) : (
-          <div className='space-y-3'>
-            {perf.perSubject.map((c) => (
-              <Bar key={c.title} label={c.title} pct={c.average} tintDanger />
-            ))}
-          </div>
-        )}
-      </Card>
+      <RecentQuizzes
+        rows={quizzes}
+        onReview={openCorrections}
+        loadingId={loadingId}
+        error={reviewErr}
+      />
 
       {perf.grades.length > 0 && (
         <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
@@ -1114,6 +1140,99 @@ function StudentAnalytics({
         </Card>
       )}
     </div>
+  )
+}
+
+/* Recent quiz attempts, newest first, each with a shortcut to its corrections —
+ * so My Performance leads straight to the breakdown of the last tests taken.
+ * Fed by GET /quizzes/results/me; corrections load on demand. */
+function RecentQuizzes({
+  rows,
+  onReview,
+  loadingId,
+  error,
+}: {
+  rows: Record<string, unknown>[]
+  onReview: (quizId: string) => void
+  loadingId: string | null
+  error: string | null
+}) {
+  const str = (v: unknown) => (v == null ? '' : String(v))
+  const fmtDate = (v: unknown) => {
+    const d = new Date(str(v))
+    return isNaN(d.getTime())
+      ? ''
+      : d.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+  const pctOf = (v: unknown) => {
+    const x = Number(v) || 0
+    return Math.round(x <= 1 ? x * 100 : x)
+  }
+  const recent = rows.slice(0, 5)
+
+  return (
+    <Card className='p-6 rounded-3xl border border-slate-100 dark:border-slate-800/80 shadow-sm bg-white dark:bg-slate-900'>
+      <p className='text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 mb-4 flex items-center gap-2'>
+        <History size={13} className='text-[#002EFF] dark:text-blue-400' /> Recent quizzes
+      </p>
+      {error && <p className='text-[11px] font-bold text-rose-600 mb-2'>{error}</p>}
+      {recent.length === 0 ? (
+        <p className='text-[11px] font-bold text-slate-400 dark:text-slate-500'>
+          No quizzes taken yet. Your attempts will show here with a link to the corrections.
+        </p>
+      ) : (
+        <div className='space-y-2'>
+          {recent.map((r) => {
+            const pct = pctOf(r.percentage)
+            const good = pct >= 70
+            const withdrawn = Boolean(r.withdrawn)
+            const quizId = str(r.quizId)
+            const canReview = !withdrawn && r.showCorrections !== false && !!quizId
+            return (
+              <div
+                key={str(r.id)}
+                className='flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50'
+              >
+                <div className='min-w-0 flex-1'>
+                  <p className='text-[11px] font-black text-slate-700 dark:text-slate-200 truncate'>
+                    {str(r.quizTitle) || 'Quiz'}
+                  </p>
+                  <p className='text-[10px] font-bold text-slate-400'>
+                    {str(r.totalScore) || 0}/{str(r.totalMarks) || 0} marks
+                    {r.submittedAt ? ` · ${fmtDate(r.submittedAt)}` : ''}
+                  </p>
+                </div>
+                <span
+                  className={`text-[11px] font-black px-2.5 py-1 rounded-lg shrink-0 ${
+                    withdrawn
+                      ? 'bg-slate-100 text-slate-400'
+                      : good
+                        ? 'bg-emerald-50 text-emerald-600'
+                        : 'bg-rose-50 text-rose-500'
+                  }`}
+                >
+                  {pct}%
+                </span>
+                {canReview && (
+                  <button
+                    onClick={() => onReview(quizId)}
+                    disabled={loadingId === quizId}
+                    className='inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-50 text-[#002EFF] font-black text-[10px] uppercase tracking-wide hover:bg-blue-100 disabled:opacity-50 shrink-0'
+                  >
+                    {loadingId === quizId ? (
+                      <Loader2 size={12} className='animate-spin' />
+                    ) : (
+                      <ListChecks size={12} />
+                    )}
+                    Review
+                  </button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
   )
 }
 

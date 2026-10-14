@@ -565,7 +565,13 @@ function normalizePlan(raw: Record<string, unknown>): Plan {
 export default function UnlockPlans() {
   const token = getToken() ?? undefined
   // The plan as the server reports it (refreshed below and by the dashboard).
-  const plan = planSummary(useCachedUser())
+  const user = useCachedUser()
+  const plan = planSummary(user)
+  const sub = user?.subscription
+  // On a paid tutorial plan now? Then only higher tiers are an upgrade — the
+  // same plan and cheaper ones are hidden, and the backend refuses them too.
+  const onTutorial = plan.status === 'active' && sub?.effectiveLevel === 'tutorial'
+  const currentAmount = onTutorial && typeof sub?.planAmount === 'number' ? sub.planAmount : null
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Plan | null>(null)
@@ -822,6 +828,11 @@ export default function UnlockPlans() {
   }
 
   // ----- List -----
+  // While on a paid tutorial plan, only genuine upgrades (a higher price) are
+  // offered. Everything the student already has — or cheaper — is hidden.
+  const visiblePlans =
+    currentAmount != null ? plans.filter((p) => p.amount > currentAmount) : plans
+  const resetWhen = sub?.expiresAt ? when(sub.expiresAt) : ''
   return (
     <div className='max-w-2xl mx-auto space-y-4'>
       <div className='flex items-center justify-between flex-wrap gap-2'>
@@ -851,6 +862,20 @@ export default function UnlockPlans() {
         <div className='flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3'>
           <Check size={16} className='text-emerald-600 shrink-0' />
           <p className='text-[11px] font-bold text-emerald-700'>{done}</p>
+        </div>
+      )}
+
+      {onTutorial && (
+        <div className='rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3'>
+          <p className='flex items-center gap-1.5 text-[10px] font-black uppercase text-[#002EFF]'>
+            <ShieldCheck size={12} /> Your active plan
+          </p>
+          <p className='mt-1 text-[12px] font-black text-slate-800'>{sub?.planName}</p>
+          <p className='mt-0.5 text-[11px] font-bold text-slate-500'>
+            {resetWhen
+              ? `Resets to Free on ${resetWhen}. You can pay again then, or upgrade to a higher plan now.`
+              : 'Active with no end date. Upgrade to a higher plan any time.'}
+          </p>
         </div>
       )}
 
@@ -884,8 +909,16 @@ export default function UnlockPlans() {
             </Card>
           ))}
         </div>
+      ) : onTutorial && visiblePlans.length === 0 ? (
+        <Card className='p-6 rounded-2xl border-none shadow-sm bg-white text-center space-y-1'>
+          <p className='text-sm font-black text-slate-700'>You are on our top plan</p>
+          <p className='text-[11px] font-bold text-slate-400'>
+            There is nothing higher to upgrade to right now.
+            {resetWhen ? ` Your plan resets to Free on ${resetWhen}.` : ''}
+          </p>
+        </Card>
       ) : (
-        plans.map((p) => (
+        visiblePlans.map((p) => (
           <Card
             key={p.id}
             className='p-4 rounded-2xl border-none shadow-sm bg-white flex items-center gap-3'
@@ -910,7 +943,7 @@ export default function UnlockPlans() {
               onClick={() => openPlan(p)}
               className='h-10 px-4 bg-[#002EFF] text-white rounded-xl font-black text-[11px] uppercase tracking-wide hover:bg-blue-700'
             >
-              Choose
+              {onTutorial ? 'Upgrade' : 'Choose'}
             </button>
           </Card>
         ))

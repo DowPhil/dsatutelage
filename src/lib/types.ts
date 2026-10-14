@@ -311,6 +311,10 @@ export interface StudentSubscription {
   /** What the server lets the student use now (provisional while pending). */
   effectiveLevel: 'free' | 'portal' | 'tutorial'
   planName: string
+  /** The verified plan the student is on now (set while active/expired). */
+  planId?: string
+  /** That plan's price in naira — used to offer only higher tiers. */
+  planAmount?: number
   expiresAt: string | null
   /** Portal access, or a tutorial plan with no end date. */
   noExpiry: boolean
