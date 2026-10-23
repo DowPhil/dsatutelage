@@ -391,6 +391,12 @@ export const PERMISSIONS: Permission[] = [
   },
 
   {
+    key: 'cbt.manage',
+    label: 'Manage the CBT Platform (questions, reports, plans)',
+    module: 'Academics',
+  },
+
+  {
     key: 'library.manage',
     label: 'Manage learning library',
     module: 'Academics',

@@ -23,6 +23,7 @@ import {
   BarChart3,
   BookOpen,
   HelpCircle,
+  MonitorCheck,
   Sparkles,
   LifeBuoy,
   Sun,
@@ -80,6 +81,7 @@ import Analytics from '@/components/dashboard/Analytics'
 import MyCourses from '@/components/dashboard/MyCourses'
 import NotificationBell from '@/components/dashboard/NotificationBell'
 import QuizRunner from '@/components/dashboard/QuizRunner'
+import CbtPractice from '@/components/dashboard/cbt/CbtPractice'
 import UnlockPlans from '@/components/dashboard/UnlockPlans'
 import { useEntitlements } from '@/components/dashboard/useEntitlements'
 import PlanBadge from '@/components/dashboard/PlanBadge'
@@ -105,6 +107,7 @@ type ViewState =
   | 'analytics'
   | 'community'
   | 'quizzes'
+  | 'cbt'
   | 'unlock'
   | 'support'
 
@@ -272,6 +275,7 @@ export default function AcademyDashboard() {
         { icon: Library, label: 'E-Learning', view: 'resources' as ViewState },
         { icon: ClipboardList, label: 'Assignments', view: 'assignments' as ViewState },
         { icon: HelpCircle, label: 'Quizzes', view: 'quizzes' as ViewState },
+        { icon: MonitorCheck, label: 'CBT Practice', view: 'cbt' as ViewState },
         { icon: Zap, label: 'Syllabus Mastery', view: 'syllabus' as ViewState },
       ],
     },
@@ -551,6 +555,7 @@ export default function AcademyDashboard() {
                 <LockedNotice feature='Community' need='portal' />
               ))}
             {activeView === 'quizzes' && <QuizRunner />}
+            {activeView === 'cbt' && <CbtPractice />}
             {activeView === 'unlock' && <UnlockPlans />}
             {activeView === 'schedule' && <ExamSchedule mode={student.mode} />}
             {activeView === 'settings' && <SettingsView />}

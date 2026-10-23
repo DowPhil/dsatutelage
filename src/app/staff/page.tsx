@@ -630,6 +630,7 @@ import {
   MessagesSquare,
   GraduationCap,
   Contact,
+  MonitorCheck,
 } from 'lucide-react'
 
 import { Card } from '@/components/ui/card'
@@ -644,6 +645,7 @@ import SupportTickets from '@/app/admin/components/SupportTickets'
 import { OfflineQueueSection } from '@/app/admin/components/PaymentsAdmin'
 import QuizBuilder from '@/app/admin/components/QuizBuilder'
 import QuestionBank from '@/components/dashboard/QuestionBank'
+import CbtPlatform from '@/app/admin/components/cbt/CbtPlatform'
 
 import DashboardShell, {
   type NavItem,
@@ -799,6 +801,14 @@ export default function StaffDashboard() {
         key: 'question-bank',
         label: 'Question Bank',
         icon: Library,
+      })
+    }
+
+    if (can('cbt.manage')) {
+      items.push({
+        key: 'cbt-platform',
+        label: 'CBT Platform',
+        icon: MonitorCheck,
       })
     }
 
@@ -1011,6 +1021,8 @@ export default function StaffDashboard() {
       {view === 'question-bank' && (
         <QuestionBank />
       )}
+
+      {view === 'cbt-platform' && <CbtPlatform token={getToken() ?? undefined} />}
 
       {/* ------------------------------------------------------------------ */}
       {/* Announcements */}

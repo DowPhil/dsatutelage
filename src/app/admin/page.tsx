@@ -464,6 +464,7 @@ import {
   HelpCircle,
   HardDrive,
   BarChart3,
+  MonitorCheck,
   Settings as SettingsIcon,
 } from 'lucide-react'
 
@@ -490,6 +491,7 @@ import { useCommunityUnread } from '@/components/dashboard/useCommunityUnread'
 import StudentReports from '@/components/dashboard/StudentReports'
 import GuardianManagement from '@/components/dashboard/GuardianManagement'
 import PlatformSettings from './components/PlatformSettings'
+import CbtPlatform from './components/cbt/CbtPlatform'
 import PaymentsAdmin from './components/PaymentsAdmin'
 import RolesPermissions from './components/RolesPermissions'
 import SupportTickets from './components/SupportTickets'
@@ -518,6 +520,7 @@ type AdminTab =
   | 'payments'
   | 'roles'
   | 'platform-settings'
+  | 'cbt-platform'
 
 /** For useSyncExternalStore reads that never change after the first render. */
 const noSubscription = () => () => {}
@@ -619,6 +622,7 @@ export default function AdminAdmin() {
           label: 'Quizzes & Questions',
           icon: HelpCircle,
         },
+        { id: 'cbt-platform' as AdminTab, label: 'CBT Platform', icon: MonitorCheck },
         { id: 'library' as AdminTab, label: 'Library Pro', icon: HardDrive },
         {
           id: 'attendance' as AdminTab,
@@ -717,6 +721,8 @@ export default function AdminAdmin() {
         return <RolesPermissions />
       case 'platform-settings':
         return <PlatformSettings token={adminToken} />
+      case 'cbt-platform':
+        return <CbtPlatform token={adminToken} />
       default:
         return <Error404 tabId={activeTab} />
     }

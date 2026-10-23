@@ -17,6 +17,29 @@ import type {
   Program,
 } from './types'
 import type { MonthlyRevenueResponse } from './admin-api'
+import type {
+  CbtAdminQuestion,
+  CbtAnswerResult,
+  CbtFacets,
+  CbtImportResult,
+  CbtInsights,
+  CbtLeaderboard,
+  CbtLimits,
+  CbtMeta,
+  CbtPagination,
+  CbtProgress,
+  CbtQuestion,
+  CbtQuestionInput,
+  CbtReportsResponse,
+  CbtResult,
+  CbtRules,
+  CbtSession,
+  CbtSessionSummary,
+  CbtSettingsData,
+  CbtStartBody,
+  CbtStudentRow,
+  CbtWhatIf,
+} from './cbt-types'
 
 // Canonical base URL. Every other file in the app used the non-www host
 // (`api.distinguishedscholarsacademy.com`); only this client previously used
@@ -2229,6 +2252,125 @@ export const dsaApi = {
         .then((r) => handleResponse<{ data?: unknown }>(r))
         .then((r) => (r as { data?: unknown }).data ?? r),
   },
+
+  // CBT Platform (/api/cbt). Errors are CbtError, whose `code` says which plan
+  // limit was hit ('DAILY_LIMIT', 'MOCK_LIMIT', 'LOCKED_YEAR', …).
+  cbt: {
+    meta: (token?: string) => cbtCall<CbtMeta>('GET', '/cbt/meta', undefined, token),
+    progress: (token?: string) => cbtCall<CbtProgress>('GET', '/cbt/progress', undefined, token),
+    leaderboard: (period: 'day' | 'week' | 'month', token?: string) =>
+      cbtCall<CbtLeaderboard>('GET', `/cbt/leaderboard?period=${period}`, undefined, token),
+    sessions: (token?: string) => cbtCall<CbtSessionSummary[]>('GET', '/cbt/sessions', undefined, token),
+    start: (body: CbtStartBody, token?: string) =>
+      cbtCall<CbtSession>('POST', '/cbt/sessions', body, token),
+    open: (token?: string) => cbtCall<CbtSession | null>('GET', '/cbt/sessions/open', undefined, token),
+    session: (id: string, token?: string) =>
+      cbtCall<CbtSession | CbtResult>('GET', `/cbt/sessions/${encodeURIComponent(id)}`, undefined, token),
+    save: (
+      id: string,
+      body: { answers?: (number | null)[]; flagged?: boolean[]; position?: number },
+      token?: string,
+    ) =>
+      cbtCall<{ saved?: boolean; submitted?: boolean; result?: CbtResult }>(
+        'PATCH',
+        `/cbt/sessions/${encodeURIComponent(id)}`,
+        body,
+        token,
+      ),
+    answer: (id: string, index: number, choice: number, token?: string) =>
+      cbtCall<CbtAnswerResult>('POST', `/cbt/sessions/${encodeURIComponent(id)}/answer`, { index, choice }, token),
+    submit: (id: string, body: { answers?: (number | null)[]; auto?: boolean }, token?: string) =>
+      cbtCall<CbtResult>('POST', `/cbt/sessions/${encodeURIComponent(id)}/submit`, body, token),
+    abandon: (id: string, token?: string) =>
+      cbtCall<{ abandoned: boolean }>('DELETE', `/cbt/sessions/${encodeURIComponent(id)}`, undefined, token),
+    saved: (token?: string) => cbtCall<CbtQuestion[]>('GET', '/cbt/saved', undefined, token),
+    savedIds: (token?: string) => cbtCall<string[]>('GET', '/cbt/saved/ids', undefined, token),
+    saveQuestion: (questionId: string, token?: string) =>
+      cbtCall<{ saved: boolean }>('POST', `/cbt/saved/${encodeURIComponent(questionId)}`, undefined, token),
+    unsaveQuestion: (questionId: string, token?: string) =>
+      cbtCall<{ saved: boolean }>('DELETE', `/cbt/saved/${encodeURIComponent(questionId)}`, undefined, token),
+    myReports: (token?: string) => cbtCall<string[]>('GET', '/cbt/reports/mine', undefined, token),
+    report: (questionId: string, body: { reason: string; note?: string }, token?: string) =>
+      cbtCall<{ reported: boolean }>('POST', `/cbt/questions/${encodeURIComponent(questionId)}/report`, body, token),
+
+    admin: {
+      insights: (token?: string) => cbtCall<CbtInsights>('GET', '/cbt/admin/insights', undefined, token),
+      questions: (query: Record<string, string | number | undefined>, token?: string) =>
+        cbtCallPaged<CbtAdminQuestion[]>(`/cbt/admin/questions${toQuery(query)}`, token),
+      facets: (token?: string) => cbtCall<CbtFacets>('GET', '/cbt/admin/questions/facets', undefined, token),
+      question: (id: string, token?: string) =>
+        cbtCall<CbtAdminQuestion>('GET', `/cbt/admin/questions/${encodeURIComponent(id)}`, undefined, token),
+      create: (body: CbtQuestionInput, token?: string) =>
+        cbtCall<CbtAdminQuestion>('POST', '/cbt/admin/questions', body, token),
+      update: (id: string, body: CbtQuestionInput, token?: string) =>
+        cbtCall<CbtAdminQuestion>('PUT', `/cbt/admin/questions/${encodeURIComponent(id)}`, body, token),
+      remove: (id: string, token?: string) =>
+        cbtCall<{ deleted: boolean }>('DELETE', `/cbt/admin/questions/${encodeURIComponent(id)}`, undefined, token),
+      bulk: (ids: string[], action: 'check' | 'uncheck' | 'delete', token?: string) =>
+        cbtCall<{ updated: number }>('POST', '/cbt/admin/questions/bulk', { ids, action }, token),
+      importRows: (rows: Record<string, string>[], token?: string) =>
+        cbtCall<CbtImportResult>('POST', '/cbt/admin/questions/import', { rows }, token),
+      exportRows: (token?: string) =>
+        cbtCall<Record<string, string | number>[]>('GET', '/cbt/admin/questions/export', undefined, token),
+      reports: (status: 'open' | 'resolved', token?: string) =>
+        cbtCall<CbtReportsResponse>('GET', `/cbt/admin/reports?status=${status}`, undefined, token),
+      updateReports: (questionId: string, action: 'resolve' | 'dismiss' | 'reopen', token?: string) =>
+        cbtCall<{ updated: number }>('PATCH', `/cbt/admin/reports/${encodeURIComponent(questionId)}`, { action }, token),
+      students: (query: Record<string, string | number | undefined>, token?: string) =>
+        cbtCallPaged<CbtStudentRow[]>(`/cbt/admin/students${toQuery(query)}`, token),
+      whatIf: (tier: string, day: number, token?: string) =>
+        cbtCall<CbtWhatIf>('GET', `/cbt/admin/what-if${toQuery({ tier, day })}`, undefined, token),
+      settings: (token?: string) => cbtCall<CbtSettingsData>('GET', '/cbt/admin/settings', undefined, token),
+      saveSettings: (
+        body: { plans?: Partial<Record<string, Partial<CbtLimits>>>; rules?: Partial<CbtRules> },
+        token?: string,
+      ) => cbtCall<CbtSettingsData>('PUT', '/cbt/admin/settings', body, token),
+    },
+  },
+}
+
+/** A CBT request that failed; `code` names a plan limit when that was the reason. */
+export class CbtError extends Error {
+  status: number
+  code?: string
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'CbtError'
+    this.status = status
+    this.code = code
+  }
+}
+
+const toQuery = (q: Record<string, string | number | undefined>) => {
+  const parts = Object.entries(q)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+  return parts.length ? `?${parts.join('&')}` : ''
+}
+
+async function cbtRaw(method: string, path: string, body: unknown, token?: string) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: getHeaders(token),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const json = (res.headers.get('content-type') || '').includes('application/json')
+    ? ((await res.json()) as { data?: unknown; pagination?: CbtPagination; message?: string; code?: string })
+    : {}
+  if (!res.ok) {
+    if (res.status === 401) handleUnauthorized()
+    throw new CbtError(json.message || `Error ${res.status}`, res.status, json.code)
+  }
+  return json
+}
+
+async function cbtCall<T>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
+  return (await cbtRaw(method, path, body, token)).data as T
+}
+
+async function cbtCallPaged<T>(path: string, token?: string): Promise<{ data: T; pagination: CbtPagination }> {
+  const json = await cbtRaw('GET', path, undefined, token)
+  return { data: json.data as T, pagination: json.pagination as CbtPagination }
 }
 
 /**
