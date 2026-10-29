@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Download, Plus, Upload } from 'lucide-react'
 import { dsaApi } from '@/lib/api'
-import { csvToObjects, downloadText, toCSV } from '@/lib/csv'
+import { csvToObjects, downloadText, tableToObjects, toCSV } from '@/lib/csv'
 import type { CbtAdminQuestion, CbtFacets, CbtImportResult, CbtPagination } from '@/lib/cbt-types'
 import QuestionEditor from './QuestionEditor'
 import {
@@ -496,37 +496,122 @@ function ImportDialog({
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<CbtImportResult | null>(null)
 
+  const [progress, setProgress] = useState('')
+  const [damaged, setDamaged] = useState<number[]>([])
+
   const pick = async (file: File) => {
     setProblem('')
     setResult(null)
+    setDamaged([])
     setFileName(file.name)
-    const { headers, rows: parsed } = csvToObjects(await file.text())
-    const missing = REQUIRED_COLUMNS.filter((c) => !headers.includes(c))
+    let parsed: { headers: string[]; rows: Record<string, string>[] }
+    try {
+      if (/\.xlsx?$/i.test(file.name)) {
+        // Excel workbook: the first sheet, every cell as the text Excel shows.
+        const XLSX = await import('xlsx')
+        const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' })
+        const sheet = wb.Sheets[wb.SheetNames[0]]
+        const table = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: '' })
+        parsed = tableToObjects(table, REQUIRED_COLUMNS)
+      } else {
+        // Excel's "CSV" and "Text" saves are often Windows-1252, not UTF-8;
+        // read as UTF-8 they turn ×, ÷, ², ° and curly quotes into "�".
+        const buf = await file.arrayBuffer()
+        let text: string
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(buf)
+        } catch {
+          text = new TextDecoder('windows-1252').decode(buf)
+        }
+        parsed = csvToObjects(text, REQUIRED_COLUMNS)
+      }
+    } catch {
+      setRows(null)
+      setProblem('That file could not be read. Save it from Excel as .xlsx or CSV and try again.')
+      return
+    }
+    const missing = REQUIRED_COLUMNS.filter((c) => !parsed.headers.includes(c))
     if (missing.length) {
       setRows(null)
-      setProblem(`Missing columns: ${missing.join(', ')}. Download the template to see the layout.`)
+      setProblem(
+        `Missing columns: ${missing.join(', ')}. The first row of the file must be the column names. ` +
+          `Found: ${parsed.headers.slice(0, 12).join(', ') || 'nothing'}. Download the template to see the layout.`,
+      )
       return
     }
-    if (!parsed.length) {
+    const rowsWithQuestions = parsed.rows.filter((r) => Object.values(r).some(Boolean))
+    if (!rowsWithQuestions.length) {
       setRows(null)
-      setProblem('That file has no questions.')
+      setProblem('That file has no questions under the column names.')
       return
     }
-    setRows(parsed)
+    setRows(rowsWithQuestions)
+    // Excel writes "?" for any symbol its save format cannot hold (−, ₦, Ω, π,
+    // H₂O, x⁴…) and "#NAME?" for a cell it took for a formula. Those questions
+    // would go live garbled, so name the rows before anything is added.
+    const looksDamaged = (v: string) => /#NAME\?|#VALUE!|#REF!|\?\?|\S\?\S|\?\d|\s\?\s/.test(v)
+    setDamaged(
+      rowsWithQuestions
+        .map((r, i) =>
+          ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'explanation'].some((k) => looksDamaged(r[k] || ''))
+            ? i + 2
+            : 0,
+        )
+        .filter(Boolean),
+    )
   }
 
+  // Sent in small batches: one request per ~60 KB keeps each well under the
+  // server's size limit and survives a weak connection better than one big one.
   const send = async () => {
     if (!rows) return
     setBusy(true)
+    setProblem('')
+    const total: CbtImportResult = { created: 0, skipped: [] }
+    const batches: { start: number; rows: Record<string, string>[] }[] = []
+    let cur: Record<string, string>[] = []
+    let size = 0
+    let start = 0
+    rows.forEach((r, i) => {
+      const n = JSON.stringify(r).length
+      if (cur.length && (size + n > 60_000 || cur.length >= 200)) {
+        batches.push({ start, rows: cur })
+        cur = []
+        size = 0
+        start = i
+      }
+      cur.push(r)
+      size += n
+    })
+    if (cur.length) batches.push({ start, rows: cur })
     try {
-      const r = await dsaApi.cbt.admin.importRows(rows, token)
-      setResult(r)
-      onDone(r)
+      for (const b of batches) {
+        setProgress(`Adding ${fN(Math.min(b.start + b.rows.length, rows.length))} of ${fN(rows.length)}…`)
+        const r = await dsaApi.cbt.admin.importRows(b.rows, token)
+        total.created += r.created
+        total.skipped.push(...r.skipped.map((x) => ({ ...x, row: x.row + b.start })))
+      }
+      setResult(total)
+      onDone(total)
     } catch (e) {
-      setProblem(e instanceof Error ? e.message : 'Import failed')
+      setProblem(
+        `${e instanceof Error ? e.message : 'Import failed'}${
+          total.created ? ` ${fN(total.created)} questions were added before it stopped; importing the file again skips them.` : ''
+        }`,
+      )
+      if (total.created) onDone(total)
     } finally {
       setBusy(false)
+      setProgress('')
     }
+  }
+
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx')
+    const sheet = XLSX.utils.json_to_sheet([TEMPLATE_ROW], { header: EXPORT_COLUMNS })
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, sheet, 'Questions')
+    XLSX.writeFile(wb, 'cbt-questions-template.xlsx')
   }
 
   return (
@@ -534,7 +619,7 @@ function ImportDialog({
       {!result ? (
         <>
           <p className='text-[12px] font-medium text-slate-600 dark:text-slate-300'>
-            Choose a CSV file (in Excel: <i>Save As → CSV UTF-8</i>). Columns:{' '}
+            Choose an Excel file (.xlsx) or a CSV file. The first row must be the column names:{' '}
             <b>
               Subject, Topic, Exam, Year, Question, Option A, Option B, Option C, Option D, Answer, Explanation,
               Passage, Image, Image alt, Difficulty
@@ -549,14 +634,14 @@ function ImportDialog({
             <button
               type='button'
               className={btnAlt}
-              onClick={() => downloadText('cbt-questions-template.csv', toCSV(EXPORT_COLUMNS, [TEMPLATE_ROW]))}
+              onClick={() => void downloadTemplate()}
             >
               <Download size={13} /> Template
             </button>
             <input
               ref={fileRef}
               type='file'
-              accept='.csv,text/csv,text/plain'
+              accept='.xlsx,.xls,.csv,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel'
               hidden
               onChange={(e) => {
                 const f = e.target.files?.[0]
@@ -567,6 +652,15 @@ function ImportDialog({
           </div>
           {fileName && <p className='mt-3 text-[11px] font-bold text-slate-500'>File: {fileName}</p>}
           {problem && <p className='mt-2 rounded-xl bg-rose-50 p-3 text-[12px] font-bold text-rose-700'>{problem}</p>}
+          {damaged.length > 0 && (
+            <div className='mt-2 rounded-xl bg-amber-50 p-3 text-[12px] font-bold text-amber-800'>
+              {fN(damaged.length)} question{damaged.length === 1 ? '' : 's'} look damaged: symbols such as −, ₦, Ω, π or
+              H₂O were saved as “?” (or a cell shows #NAME?). This happens when Excel saves as plain CSV or Text.
+              Upload the original .xlsx file instead, or in Excel use <i>Save As → CSV UTF-8</i>. Rows:{' '}
+              {damaged.slice(0, 30).join(', ')}
+              {damaged.length > 30 ? ` and ${fN(damaged.length - 30)} more` : ''}.
+            </div>
+          )}
           {rows && (
             <p className='mt-2 text-[12px] font-bold text-slate-700 dark:text-slate-200'>
               {fN(rows.length)} rows found. Rows with missing or invalid fields, and questions already in the bank, are
@@ -578,7 +672,7 @@ function ImportDialog({
               Cancel
             </button>
             <button type='button' className={btn} disabled={!rows || busy} onClick={send}>
-              {busy ? 'Adding…' : `Add ${rows ? fN(rows.length) : ''} questions`}
+              {busy ? progress || 'Adding…' : `Add ${rows ? fN(rows.length) : ''} questions`}
             </button>
           </div>
         </>

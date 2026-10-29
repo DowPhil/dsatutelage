@@ -227,11 +227,17 @@ export function LockSheet({ meta, lock, onClose, onPlans }: { meta: CbtMeta; loc
 
 /** A question's picture, tap to enlarge. */
 export function Figure({ src, alt }: { src: string; alt: string }) {
+  const img = (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt || 'Picture for this question'} loading='lazy' className='max-h-72 max-w-full rounded-2xl border border-slate-100 bg-white' />
+  )
+  // Browsers refuse to open a data: picture in a new tab, so an inline diagram
+  // is shown without the full-size link.
+  if (src.startsWith('data:')) return <figure className='my-3'>{img}</figure>
   return (
     <figure className='my-3'>
       <a href={src} target='_blank' rel='noopener noreferrer' aria-label='Open the picture full size'>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt || 'Picture for this question'} loading='lazy' className='max-h-72 max-w-full rounded-2xl border border-slate-100' />
+        {img}
       </a>
       <figcaption className='mt-1 text-[11px] text-slate-400'>Tap the picture to open it full size.</figcaption>
     </figure>

@@ -41,7 +41,8 @@ function problems(q: CbtQuestionInput): string[] {
   if (q.answer < 0) e.push('Tick the correct option.')
   const y = Number(q.year)
   if (!Number.isInteger(y) || y < 1978 || y > new Date().getFullYear() + 1) e.push('Enter the exam year.')
-  if (q.image.trim() && !/^https?:\/\//i.test(q.image.trim())) e.push('The picture must be a web link (https://…).')
+  if (q.image.trim() && !/^(https?:\/\/|data:image\/svg\+xml[,;])/i.test(q.image.trim()))
+    e.push('The picture must be a web link (https://…) or an SVG diagram.')
   if (q.image.trim() && !q.imageAlt.trim()) e.push('Describe the picture for students who cannot see it.')
   return e
 }
