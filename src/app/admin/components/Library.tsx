@@ -855,6 +855,8 @@ export default function LibraryPage(_props?: { courseId?: string }) {
     description: string
     isDownloadable: boolean
     paid: boolean
+    /** Only students on these plans can open it; empty = no plan limit. */
+    plans: string[]
     fileSizeBytes?: number
     durationSeconds?: number
   }>({
@@ -864,7 +866,11 @@ export default function LibraryPage(_props?: { courseId?: string }) {
     description: '',
     isDownloadable: true,
     paid: false,
+    plans: [],
   })
+  // The material whose access (plans) is being changed from the list.
+  const [accessEdit, setAccessEdit] = useState<{ id: string; title: string; plans: string[]; paid: boolean } | null>(null)
+  const [accessSaving, setAccessSaving] = useState(false)
 
   const [fileToUpload, setFileToUpload] = useState<File | null>(null)
   // The Cloudinary response for the file in the form — its secure_url is what
@@ -1028,7 +1034,8 @@ export default function LibraryPage(_props?: { courseId?: string }) {
           classLevel,
           type: formData.type,
           isDownloadable: formData.isDownloadable,
-          paid: formData.paid,
+          paid: formData.paid || formData.plans.length > 0,
+          plans: formData.plans,
           description: formData.description,
           durationSeconds: formData.durationSeconds,
         },
@@ -1089,6 +1096,7 @@ export default function LibraryPage(_props?: { courseId?: string }) {
       description: '',
       isDownloadable: true,
       paid: false,
+      plans: [],
     })
     setFileToUpload(null)
     setLastUpload(null)
@@ -1283,7 +1291,16 @@ export default function LibraryPage(_props?: { courseId?: string }) {
                         <ExternalLink className='w-6 h-6 text-emerald-500' />
                       )}
                     </div>
-                    <div className='flex items-center gap-1.5'>
+                    <div className='flex flex-wrap items-center justify-end gap-1.5'>
+                      {(item.plans?.length ?? 0) > 0 ? (
+                        <span className='text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700'>
+                          {item.plans!.join(' · ')} only
+                        </span>
+                      ) : item.paid ? (
+                        <span className='text-xs font-bold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700'>
+                          Paid
+                        </span>
+                      ) : null}
                       {item.classLevel && (
                         <span className='text-xs font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700'>
                           {classLevelLabel(selectedCourse?.category, item.classLevel)}
@@ -1319,6 +1336,20 @@ export default function LibraryPage(_props?: { courseId?: string }) {
                     )}
                   </div>
 
+                  <button
+                    type='button'
+                    onClick={() =>
+                      setAccessEdit({
+                        id: String(item.id),
+                        title: item.title,
+                        plans: item.plans ?? [],
+                        paid: item.paid === true,
+                      })
+                    }
+                    className='text-xs font-semibold text-slate-500 hover:text-slate-700'
+                  >
+                    Access
+                  </button>
                   <a
                     href={item.url}
                     target='_blank'
@@ -1343,6 +1374,61 @@ export default function LibraryPage(_props?: { courseId?: string }) {
       </div>
 
       {/* CREATE MATERIAL MODAL */}
+      {accessEdit && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4' role='dialog' aria-modal='true' aria-label='Material access'>
+          <div className='w-full max-w-md rounded-2xl bg-white p-5 shadow-xl'>
+            <h3 className='text-base font-bold text-slate-900'>Who can open it</h3>
+            <p className='mt-0.5 text-xs text-slate-500 line-clamp-1'>{accessEdit.title}</p>
+            <label className='mt-4 flex items-start gap-2 cursor-pointer'>
+              <input
+                type='checkbox'
+                checked={accessEdit.paid}
+                onChange={(e) => setAccessEdit({ ...accessEdit, paid: e.target.checked })}
+                className='mt-0.5 rounded text-blue-600 w-4 h-4'
+              />
+              <span className='text-xs text-slate-700'>
+                <span className='font-semibold'>Paid material</span> — any paid plan can open it.
+              </span>
+            </label>
+            <PlanPicker value={accessEdit.plans} onChange={(plans) => setAccessEdit({ ...accessEdit, plans })} />
+            <div className='mt-5 flex justify-end gap-2'>
+              <button
+                type='button'
+                onClick={() => setAccessEdit(null)}
+                className='rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100'
+              >
+                Cancel
+              </button>
+              <button
+                type='button'
+                disabled={accessSaving}
+                onClick={async () => {
+                  setAccessSaving(true)
+                  try {
+                    const body = { paid: accessEdit.paid || accessEdit.plans.length > 0, plans: accessEdit.plans }
+                    await adminApi.updateMaterialAccess(accessEdit.id, body)
+                    setMaterials((prev) => prev.map((m) => (String(m.id) === accessEdit.id ? { ...m, ...body } : m)))
+                    setSuccess(
+                      accessEdit.plans.length
+                        ? `Now only ${accessEdit.plans.join(', ')} students can open “${accessEdit.title}”.`
+                        : `Access updated for “${accessEdit.title}”.`,
+                    )
+                    setAccessEdit(null)
+                  } catch (err: unknown) {
+                    setError(err instanceof Error ? err.message : 'Could not change the access.')
+                  } finally {
+                    setAccessSaving(false)
+                  }
+                }}
+                className='rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50'
+              >
+                {accessSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isModalOpen && (
         <div className='fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm'>
           <div className='bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-5'>
@@ -1467,6 +1553,10 @@ export default function LibraryPage(_props?: { courseId?: string }) {
                     download it. Leave off for a free material open to all.
                   </span>
                 </label>
+                <PlanPicker
+                  value={formData.plans}
+                  onChange={(plans) => setFormData({ ...formData, plans })}
+                />
               </div>
 
               {/* Direct File Upload integration via S3 Presigned URL */}
@@ -1550,6 +1640,45 @@ export default function LibraryPage(_props?: { courseId?: string }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+const PLAN_TIERS = ['Silver', 'Gold', 'Elite'] as const
+
+/**
+ * Which plans can open a material. None ticked = no plan limit (the Paid
+ * switch alone decides). Students on other plans see it listed but locked.
+ */
+function PlanPicker({ value, onChange }: { value: string[]; onChange: (plans: string[]) => void }) {
+  const toggle = (t: string) =>
+    onChange(value.includes(t) ? value.filter((x) => x !== t) : PLAN_TIERS.filter((x) => x === t || value.includes(x)))
+  return (
+    <div className='mt-3 border-t border-slate-100 pt-3'>
+      <p className='text-xs font-semibold text-slate-700'>Only these plans can open it</p>
+      <div className='mt-1.5 flex flex-wrap gap-2'>
+        {PLAN_TIERS.map((t) => (
+          <label
+            key={t}
+            className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+              value.includes(t) ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-600'
+            }`}
+          >
+            <input
+              type='checkbox'
+              checked={value.includes(t)}
+              onChange={() => toggle(t)}
+              className='rounded text-blue-600 w-3.5 h-3.5'
+            />
+            {t}
+          </label>
+        ))}
+      </div>
+      <p className='mt-1.5 text-[11px] text-slate-500'>
+        {value.length
+          ? `Students on ${value.join(', ')} can open it. Everyone else sees it listed with a lock.`
+          : 'Tick one or more plans to limit it. Leave all unticked for no plan limit.'}
+      </p>
     </div>
   )
 }

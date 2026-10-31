@@ -151,6 +151,7 @@ export function buildMaterialPayload(
     type: string
     isDownloadable: boolean
     paid?: boolean
+    plans?: string[]
     description?: string
     durationSeconds?: number
   },
@@ -166,6 +167,8 @@ export function buildMaterialPayload(
     url,
     isDownloadable: draft.isDownloadable,
     paid: draft.paid === true,
+    // Only plan-limited materials carry a plans list (none = no plan limit).
+    ...(draft.plans?.length ? { plans: draft.plans } : {}),
     ...(draft.description ? { description: draft.description } : {}),
     ...(draft.durationSeconds ? { durationSeconds: draft.durationSeconds } : {}),
     ...(classLevel ? { classLevel } : {}),

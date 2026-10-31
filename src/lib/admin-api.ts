@@ -369,7 +369,9 @@ export interface CourseMaterial {
   isDownloadable?: boolean
   /** Paid materials are locked to students on a paid plan. */
   paid?: boolean
-  /** True when the current viewer (a free-plan student) cannot open it. */
+  /** When set, only students on these plans (Silver / Gold / Elite) can open it. */
+  plans?: string[]
+  /** True when the current viewer cannot open it (plan or paid lock). */
   locked?: boolean
   fileSizeBytes?: number
   durationSeconds?: number
@@ -398,6 +400,7 @@ export interface CreateMaterialPayload {
   orderIndex?: number
   isDownloadable?: boolean
   paid?: boolean
+  plans?: string[]
   fileSizeBytes?: number
   durationSeconds?: number
 }
@@ -1122,6 +1125,16 @@ getStudentDetails: (id: string) =>
       `/api/courses/${encodeURIComponent(cleanId)}/materials`,
     )
   },
+
+  /**
+   * PUT /api/materials/{id}
+   * Change a material's access: { paid?, plans? }.
+   */
+  updateMaterialAccess: (materialId: string, body: { paid?: boolean; plans?: string[] }) =>
+    adminFetch<MaterialResponse>(`/api/materials/${encodeURIComponent(materialId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   /**
    * POST /api/courses/{id}/materials

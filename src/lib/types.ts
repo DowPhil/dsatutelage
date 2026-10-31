@@ -165,6 +165,8 @@ export interface CourseMaterial {
   paid?: boolean
   /** True when the current viewer (a free-plan student) cannot open it. */
   locked?: boolean
+  /** Only students on these plans (Silver / Gold / Elite) can open it. */
+  plans?: string[]
   durationLabel?: string // e.g. "12:40" for video/recording
   createdAt: string
 }

@@ -96,6 +96,7 @@ function mapMaterial(m: Record<string, unknown>): CourseMaterial {
     isDownloadable: !!m.isDownloadable,
     paid: m.paid === true,
     locked: m.locked === true,
+    plans: Array.isArray(m.plans) ? (m.plans as unknown[]).map(String) : [],
     durationLabel: m.durationLabel ? String(m.durationLabel) : undefined,
     createdAt: String(m.createdAt ?? ''),
   }
@@ -799,15 +800,24 @@ function StudentMaterials({
                   <div className='min-w-0 flex-1'>
                     <p className='text-xs font-black text-gray-800 truncate flex items-center gap-1.5'>
                       {m.title}
-                      {m.paid && (
+                      {m.plans && m.plans.length > 0 ? (
+                        <span className='shrink-0 text-[8px] font-black uppercase text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded'>
+                          {m.plans.join(' · ')}
+                        </span>
+                      ) : m.paid ? (
                         <span className='shrink-0 text-[8px] font-black uppercase text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded'>
                           Paid
                         </span>
-                      )}
+                      ) : null}
                     </p>
                     <p className='text-[10px] font-bold text-slate-400'>
                       {TYPE_META[m.type].label}
                       {m.durationLabel ? ` · ${m.durationLabel}` : ''}
+                      {m.locked && m.plans && m.plans.length > 0 && (
+                        <span className='block text-amber-700'>
+                          For {m.plans.join(', ').replace(/, ([^,]*)$/, ' and $1')} plan students
+                        </span>
+                      )}
                     </p>
                   </div>
                   {m.locked ? (
