@@ -4,6 +4,7 @@
 // one or more subject blocks, each with its own time limit and its chosen
 // questions. See docs/quiz-feature.md.
 
+import CodeLockSettings, { parseCodes, type CodeLockUse, type CodeLockValue } from './CodeLockSettings'
 import {
   useCallback,
   useEffect,
@@ -165,6 +166,9 @@ export default function QuizBuilder() {
   // Attempts & result controls. maxAttempts 0 = unlimited.
   const [maxAttempts, setMaxAttempts] = useState('1')
   const [showResults, setShowResults] = useState(true)
+  // Code lock: questions stay hidden until the taker enters a code.
+  const [codeLockValue, setCodeLockValue] = useState<CodeLockValue>({ enabled: false, mode: 'shared', codes: '' })
+  const [codeLockUses, setCodeLockUses] = useState<CodeLockUse[]>([])
   const [showCorrections, setShowCorrections] = useState(true)
   // Portal quizzes only: locked to paid-plan students when true.
   const [paid, setPaid] = useState(false)
@@ -416,6 +420,12 @@ export default function QuizBuilder() {
       showResults,
       showCorrections,
       showLeaderboard,
+      codeLock: {
+        enabled: codeLockValue.enabled,
+        // Personal codes are for portal quizzes; a public link test uses one code.
+        mode: accessMode === 'free' ? 'shared' : codeLockValue.mode,
+        codes: parseCodes(codeLockValue.codes),
+      },
       track: effectiveTrack === 'all' ? 'all' : effectiveTrack,
       department: dept,
       audience: audienceLabel(
@@ -496,6 +506,8 @@ export default function QuizBuilder() {
       setMaxAttempts('1')
       setShowResults(true)
       setShowCorrections(true)
+      setCodeLockValue({ enabled: false, mode: 'shared', codes: '' })
+      setCodeLockUses([])
       setPaid(false)
       setBlocks([])
       setEditingId(null)
@@ -548,6 +560,13 @@ export default function QuizBuilder() {
     setShowResults(q.showResults !== false)
     setShowCorrections(q.showCorrections !== false)
     setShowLeaderboard(q.showLeaderboard !== false)
+    const cl = (q.codeLock ?? {}) as { enabled?: boolean; mode?: string; codes?: string[]; uses?: CodeLockUse[] }
+    setCodeLockValue({
+      enabled: cl.enabled === true,
+      mode: cl.mode === 'personal' ? 'personal' : 'shared',
+      codes: Array.isArray(cl.codes) ? cl.codes.join('\n') : '',
+    })
+    setCodeLockUses(Array.isArray(cl.uses) ? cl.uses : [])
     setPaid(q.paid === true)
     setBlocks([])
     // Show the existing shareable link when re-editing a free quiz.
@@ -1000,6 +1019,19 @@ export default function QuizBuilder() {
           )}
         </div>
 
+        )}
+
+        {current === 'settings' && (
+          <CodeLockSettings
+            value={codeLockValue}
+            onChange={setCodeLockValue}
+            uses={codeLockUses}
+            quizTitle={title}
+            quizId={editingId}
+            accessMode={accessMode}
+            assignedCount={audienceMode === 'students' ? assignedStudents.length : 0}
+            token={token}
+          />
         )}
 
         {current === 'settings' && editingId && (

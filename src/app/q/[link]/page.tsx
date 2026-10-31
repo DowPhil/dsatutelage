@@ -180,6 +180,11 @@ export default function PublicQuizPage() {
   const [alreadyTaken, setAlreadyTaken] = useState(false)
   const [showCorrections, setShowCorrections] = useState(false)
   const [showMap, setShowMap] = useState(false) // mobile question-map drawer
+  // Code-locked test: the questions arrive only after a valid access code.
+  const [locked, setLocked] = useState(false)
+  const [lockedCount, setLockedCount] = useState(0)
+  const [accessCode, setAccessCode] = useState('')
+  const [unlocking, setUnlocking] = useState(false)
   // Everyone's ranking on this quiz, signed-in and via the link together.
   const [board, setBoard] = useState<LeaderboardRow[]>([])
   const [boardLoading, setBoardLoading] = useState(false)
@@ -227,6 +232,28 @@ export default function PublicQuizPage() {
           unknown
         >
         if (cancelled) return
+        if (full.locked === true) {
+          setTitle(String(full.title || 'Quiz'))
+          setLocked(true)
+          setLockedCount(Number(full.questionCount) || 0)
+          setMinutes(Number(full.durationMinutes || full.timeLimit) || 0)
+          // Already taken on this device? Show the stored result, no retake.
+          try {
+            const raw = localStorage.getItem(takenKey)
+            const prior = raw ? (JSON.parse(raw) as { result?: PublicQuizResult; name?: string }) : null
+            if (prior?.result) {
+              setResult(prior.result)
+              if (prior.name) setName(prior.name)
+              setAlreadyTaken(true)
+              setStep('result')
+              return
+            }
+          } catch {
+            /* storage unavailable — the backend still de-dupes by email */
+          }
+          setStep('details')
+          return
+        }
         const mapped = mapQuiz(full)
         if (mapped.questions.length === 0) {
           setErrorMsg('This quiz has no questions yet.')
@@ -288,6 +315,7 @@ export default function PublicQuizPage() {
               answers[q.questionId] === undefined ? -1 : answers[q.questionId],
           })),
           timeTaken,
+          ...(locked ? { code: accessCode.trim() } : {}),
         })) as PublicQuizResult
         setResult(res)
         // Lock this device from retaking, and keep the result for a revisit.
@@ -363,7 +391,7 @@ export default function PublicQuizPage() {
     return () => clearInterval(id)
   }, [step, minutes, submit])
 
-  const start = () => {
+  const start = async () => {
     if (name.trim().length < 2) {
       setErrorMsg('Please enter your name.')
       return
@@ -376,8 +404,39 @@ export default function PublicQuizPage() {
       setErrorMsg('Please enter a valid phone number.')
       return
     }
+    let mins = minutes
+    if (locked) {
+      if (!accessCode.trim()) {
+        setErrorMsg('Please enter the access code you were given.')
+        return
+      }
+      setUnlocking(true)
+      try {
+        const full = (await dsaApi.quizzes.unlockPublic(link, {
+          code: accessCode.trim(),
+          email: email.trim().toLowerCase(),
+          name: name.trim(),
+        })) as unknown as Record<string, unknown>
+        const mapped = mapQuiz(full)
+        if (mapped.questions.length === 0) {
+          setErrorMsg('This test has no questions yet.')
+          return
+        }
+        setTitle(mapped.title)
+        setQuestions(mapped.questions)
+        if (mapped.minutes) {
+          mins = mapped.minutes
+          setMinutes(mapped.minutes)
+        }
+      } catch (e) {
+        setErrorMsg(e instanceof Error ? e.message : 'That access code could not be checked. Try again.')
+        return
+      } finally {
+        setUnlocking(false)
+      }
+    }
     setErrorMsg('')
-    const secs = minutes * 60
+    const secs = mins * 60
     totalTime.current = secs
     setRemaining(secs)
     setAnswers({})
@@ -570,13 +629,14 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
         {step === 'details' && (
           <div className='mt-10 bg-white rounded-3xl shadow-sm p-6 sm:p-8'>
             <p className='text-[10px] font-black uppercase tracking-widest text-[#FCB900]'>
-              Free quiz
+              {locked ? 'Locked test · access code needed' : 'Free quiz'}
             </p>
             <h1 className='text-2xl font-black text-slate-900 tracking-tight mt-1'>
               {title}
             </h1>
             <p className='text-[12px] font-bold text-slate-400 mt-1'>
-              {questions.length} question{questions.length === 1 ? '' : 's'}
+              {locked ? lockedCount : questions.length} question
+              {(locked ? lockedCount : questions.length) === 1 ? '' : 's'}
               {minutes > 0 ? ` · ${minutes} min` : ''}
             </p>
 
@@ -616,6 +676,22 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
                   className='mt-1 w-full h-11 px-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-bold'
                 />
               </div>
+              {locked && (
+                <div>
+                  <label className='text-[9px] font-black uppercase text-slate-400'>
+                    Access code <span className='text-slate-300'>· sent to you after payment</span>
+                  </label>
+                  <input
+                    value={accessCode}
+                    onChange={(e) => setAccessCode(e.target.value)}
+                    placeholder='e.g. DSA-7K4PQ2'
+                    autoCapitalize='characters'
+                    autoComplete='off'
+                    spellCheck={false}
+                    className='mt-1 w-full h-11 px-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-black tracking-wider uppercase'
+                  />
+                </div>
+              )}
               <p className='text-[10px] font-bold text-slate-400'>
                 You can only take this quiz <span className='text-[#002EFF]'>once</span> on
                 this device.
@@ -624,10 +700,12 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
                 <p className='text-[11px] font-bold text-rose-600'>{errorMsg}</p>
               )}
               <button
-                onClick={start}
-                className='w-full flex items-center justify-center gap-2 h-12 bg-[#002EFF] text-white rounded-xl font-black text-[12px] uppercase tracking-wide hover:bg-blue-700 active:scale-[0.98] transition-all'
+                onClick={() => void start()}
+                disabled={unlocking}
+                className='w-full flex items-center justify-center gap-2 h-12 bg-[#002EFF] text-white rounded-xl font-black text-[12px] uppercase tracking-wide hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-60'
               >
-                Start quiz <ArrowRight size={15} />
+                {unlocking ? 'Checking your code…' : locked ? 'Unlock and start' : 'Start quiz'}{' '}
+                <ArrowRight size={15} />
               </button>
             </div>
           </div>

@@ -560,6 +560,8 @@ export const dsaApi = {
         phone: string
         answers: QuizAnswer[]
         timeTaken: number
+        /** Code-locked test: the access code used to unlock it. */
+        code?: string
       },
     ) =>
       fetch(`${BASE_URL}/public/quizzes/${encodeURIComponent(link)}/submit`, {
@@ -579,6 +581,28 @@ export const dsaApi = {
         headers: getHeaders(token),
         body: JSON.stringify(payload),
       }).then((r) => handleResponse<{ valid: boolean; quiz?: Quiz }>(r)),
+
+    // POST /public/quizzes/:link/unlock — a code-locked public test: the code
+    // plus the taker's email (a single-use code is claimed for that email).
+    // Returns the quiz with its questions. Errors carry `code`
+    // (CODE_INVALID / CODE_USED) via CbtError.
+    unlockPublic: (link: string, body: { code: string; email: string; name?: string }) =>
+      cbtCall<Quiz>('POST', `/public/quizzes/${encodeURIComponent(link)}/unlock`, body),
+
+    // GET /quizzes/:id/access-codes — staff: a locked quiz's codes, with the
+    // student each personal code belongs to and when it was used.
+    accessCodes: (id: string, token?: string) =>
+      cbtCall<{
+        enabled: boolean
+        mode: 'shared' | 'personal'
+        codes: string[]
+        personal: { code: string; name: string; studentId: string; email: string; usedAt: string | null }[]
+      }>('GET', `/quizzes/${encodeURIComponent(id)}/access-codes`, undefined, token),
+
+    // POST /quizzes/:id/unlock — a code-locked portal quiz: { code }. Returns
+    // the quiz with its questions for this student.
+    unlock: (id: string, code: string, token?: string) =>
+      cbtCall<Quiz>('POST', `/quizzes/${encodeURIComponent(id)}/unlock`, { code }, token),
 
     // POST /quizzes/:id/start — begin (or resume) a sitting. For students it
     // uses one of the month's quiz/test attempts unless one is already open;

@@ -136,6 +136,13 @@ export default function QuizRunner() {
   const [myResults, setMyResults] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // A code-locked quiz waiting for its access code: the dialog checks the code
+  // and resolves with the unlocked quiz (or null when the student cancels).
+  const [codePrompt, setCodePrompt] = useState<{
+    qid: string
+    title: string
+    resolve: (quiz: Record<string, unknown> | null) => void
+  } | null>(null)
 
   // Active attempt
   const [quiz, setQuiz] = useState<Record<string, unknown> | null>(null)
@@ -464,10 +471,20 @@ export default function QuizRunner() {
     }
     setLoading(true)
     try {
-      const full = (await dsaApi.quizzes.get(qid, token)) as Record<
+      let full = (await dsaApi.quizzes.get(qid, token)) as Record<
         string,
         unknown
       >
+      // Code-locked and not yet unlocked by this student: ask for the code.
+      const lock = full.codeLock as { enabled?: boolean; unlocked?: boolean } | undefined
+      if (lock?.enabled && !lock.unlocked) {
+        const unlocked = await new Promise<Record<string, unknown> | null>((resolve) =>
+          setCodePrompt({ qid, title: str(full.title), resolve }),
+        )
+        setCodePrompt(null)
+        if (!unlocked) return
+        full = unlocked
+      }
       const subjects = Array.isArray(full.subjects) ? full.subjects : []
       const flat: RunQuestion[] = []
       let minutes = 0
@@ -1202,6 +1219,16 @@ export default function QuizRunner() {
 
   return (
     <div className='max-w-2xl mx-auto space-y-4'>
+      {codePrompt && (
+        <AccessCodeDialog
+          title={codePrompt.title}
+          onCancel={() => codePrompt.resolve(null)}
+          onUnlock={async (code) => {
+            const q = (await dsaApi.quizzes.unlock(codePrompt.qid, code, token)) as unknown as Record<string, unknown>
+            codePrompt.resolve(q)
+          }}
+        />
+      )}
       <div className='flex items-start justify-between gap-3'>
         <div>
           <h2 className='text-2xl font-black text-[#002EFF] italic uppercase'>
@@ -1252,11 +1279,16 @@ export default function QuizRunner() {
         <>
           {quizzes.map((q) => {
           const subjects = Array.isArray(q.subjects) ? q.subjects : []
-          const qCount = subjects.reduce(
-            (n: number, s: Record<string, unknown>) =>
-              n + (Array.isArray(s.questions) ? s.questions.length : 0),
-            0,
-          )
+          // A code-locked quiz arrives without its questions; the server sends the count.
+          const qCount =
+            Number(q.questionCount) ||
+            subjects.reduce(
+              (n: number, s: Record<string, unknown>) =>
+                n + (Array.isArray(s.questions) ? s.questions.length : 0),
+              0,
+            )
+          const lockInfo = q.codeLock as { enabled?: boolean; unlocked?: boolean; myCode?: string | null } | undefined
+          const codeLocked = lockInfo?.enabled === true
           const mins = subjects.reduce(
             (n: number, s: Record<string, unknown>) => n + (Number(s.timeLimit) || 0),
             0,
@@ -1281,6 +1313,11 @@ export default function QuizRunner() {
                       Paid
                     </span>
                   )}
+                  {codeLocked && (
+                    <span className='text-[8px] font-black uppercase text-[#002EFF] bg-blue-50 px-1.5 py-0.5 rounded shrink-0'>
+                      Code needed
+                    </span>
+                  )}
                   {used > 0 && (
                     <span className='text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded shrink-0'>
                       Taken
@@ -1294,6 +1331,17 @@ export default function QuizRunner() {
                   {str(q.totalMarks) || 0} marks
                   {maxAttempts > 0 && ` · ${used}/${maxAttempts} attempt${maxAttempts === 1 ? '' : 's'}`}
                 </p>
+                {codeLocked && lockInfo?.myCode && !lockInfo.unlocked && (
+                  <p className='mt-1 text-[11px] font-bold text-slate-600'>
+                    Your access code:{' '}
+                    <span className='rounded bg-blue-50 px-1.5 py-0.5 font-mono font-black tracking-wider text-[#002EFF] select-all'>
+                      {lockInfo.myCode}
+                    </span>
+                    <span className='block text-[10px] font-medium text-slate-400'>
+                      Personal to you — do not share it. Enter it when you start the test.
+                    </span>
+                  </p>
+                )}
               </div>
               {paidLocked ? (
                 <a
@@ -1474,3 +1522,74 @@ function QuizHistory({
   )
 }
 
+/** Asks for the access code of a code-locked quiz and checks it. */
+function AccessCodeDialog({
+  title,
+  onCancel,
+  onUnlock,
+}: {
+  title: string
+  onCancel: () => void
+  onUnlock: (code: string) => Promise<void>
+}) {
+  const [code, setCode] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const submit = async () => {
+    if (!code.trim()) {
+      setErr('Enter the access code you were given.')
+      return
+    }
+    setBusy(true)
+    setErr('')
+    try {
+      await onUnlock(code.trim())
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'That code could not be checked. Try again.')
+      setBusy(false)
+    }
+  }
+  return (
+    <div className='fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4' role='dialog' aria-modal='true' aria-label='Enter access code'>
+      <div className='w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl dark:bg-zinc-900'>
+        <p className='text-[10px] font-black uppercase tracking-widest text-[#FCB900]'>Locked test</p>
+        <h3 className='mt-1 text-lg font-black text-slate-900 dark:text-white'>{title || 'This quiz'}</h3>
+        <p className='mt-1 text-[12px] font-medium text-slate-500'>
+          Enter the access code you were given to open the questions.
+        </p>
+        <input
+          autoFocus
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void submit()
+          }}
+          placeholder='e.g. DSA-7K4PQ2'
+          autoCapitalize='characters'
+          autoComplete='off'
+          spellCheck={false}
+          aria-label='Access code'
+          className='mt-4 h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-center text-[15px] font-black uppercase tracking-wider outline-none focus:border-[#002EFF] dark:border-zinc-700 dark:bg-zinc-800 dark:text-white'
+        />
+        {err && <p className='mt-2 text-[12px] font-bold text-rose-600'>{err}</p>}
+        <div className='mt-4 flex gap-2'>
+          <button
+            type='button'
+            onClick={onCancel}
+            className='h-11 flex-1 rounded-xl bg-slate-100 text-[12px] font-black uppercase text-slate-600'
+          >
+            Cancel
+          </button>
+          <button
+            type='button'
+            onClick={() => void submit()}
+            disabled={busy}
+            className='h-11 flex-1 rounded-xl bg-[#002EFF] text-[12px] font-black uppercase text-white disabled:opacity-60'
+          >
+            {busy ? 'Checking…' : 'Unlock'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
