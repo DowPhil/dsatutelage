@@ -1,7 +1,7 @@
 //src/app/admin/components/StudentRoster.tsx
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   GraduationCap,
   Mail,
@@ -66,6 +66,10 @@ export interface ExtendedStudentPerson {
   currentLevel?: string
   subscriptionPlan?: StudentDetailsResponse['data']['subscriptionPlan']
   payment?: StudentDetailsResponse['data']['payment']
+  /** When the student's tutorial plan ends (or ended); null for none. */
+  planEndsAt?: string | null
+  /** What they still owe on their latest plan. */
+  balance?: { planName: string; planAmount: number; totalPaid: number; outstanding: number } | null
 }
 
 interface ActionModalState {
@@ -99,7 +103,36 @@ function mapStudent(
           : undefined,
     status: (s.status ||
       (s.isActive === false ? 'suspended' : 'active')) as string,
+    planEndsAt: typeof s.planEndsAt === 'string' ? s.planEndsAt : null,
+    balance: (s.balance as ExtendedStudentPerson['balance']) ?? null,
   }
+}
+
+/** "Plan ended 3 Oct" / "Plan ends 15 Nov" / "Owes ₦20,000" — for chasing payments. */
+function DuesLine({ p }: { p: ExtendedStudentPerson }) {
+  const parts: { text: string; tone: string }[] = []
+  if (p.planEndsAt) {
+    const end = new Date(p.planEndsAt)
+    const now = new Date()
+    const day = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'Africa/Lagos' })
+    const sameMonth = end.getFullYear() === now.getFullYear() && end.getMonth() === now.getMonth()
+    if (end <= now) parts.push({ text: `Plan ended ${day}`, tone: 'bg-rose-50 text-rose-700' })
+    else if (sameMonth) parts.push({ text: `Plan ends ${day}`, tone: 'bg-amber-50 text-amber-700' })
+    else parts.push({ text: `Plan ends ${day}`, tone: 'bg-slate-50 text-slate-500' })
+  }
+  if (p.balance && p.balance.outstanding > 0) {
+    parts.push({ text: `Owes ₦${p.balance.outstanding.toLocaleString('en-NG')}`, tone: 'bg-rose-50 text-rose-700' })
+  }
+  if (!parts.length) return null
+  return (
+    <span className='mt-0.5 flex flex-wrap gap-1'>
+      {parts.map((x) => (
+        <span key={x.text} className={`rounded px-1.5 py-0.5 text-[9px] font-black ${x.tone}`}>
+          {x.text}
+        </span>
+      ))}
+    </span>
+  )
 }
 
 /* ------------------------------------------------------------------ */
@@ -287,6 +320,10 @@ export default function StudentRoster({
     setAlertConfig({ isOpen: true, title, message, type })
   }
 
+  // Only the newest request may fill the list: picking a filter while an
+  // earlier (unfiltered) page is still loading must not show the old page.
+  const latestFetch = useRef(0)
+
   // Data Fetching logic with Pagination support
   const fetchStudents = useCallback(
     async (
@@ -303,6 +340,7 @@ export default function StudentRoster({
         courseId?: string
       } = {},
     ) => {
+    const fetchId = ++latestFetch.current
     setLoading(true)
     setLoadError('')
     try {
@@ -321,6 +359,7 @@ export default function StudentRoster({
         limit,
       })
 
+      if (fetchId !== latestFetch.current) return
       // Standardize response payload format
       const resAny = response as unknown as Record<string, unknown>
       const rows = Array.isArray(response)
@@ -356,6 +395,7 @@ export default function StudentRoster({
         throw new Error('No server data structure matched.')
       }
     } catch (err) {
+      if (fetchId !== latestFetch.current) return
       setLoadError(err instanceof Error ? err.message : 'Could not load students.')
       // Local fallback in case server fails
       const localFallback: ExtendedStudentPerson[] = []
@@ -370,7 +410,7 @@ export default function StudentRoster({
       setTotalStudents(localFallback.length)
       setTotalPages(1)
     } finally {
-      setLoading(false)
+      if (fetchId === latestFetch.current) setLoading(false)
     }
   }, [])
 
@@ -790,6 +830,10 @@ export default function StudentRoster({
           className='h-9 px-2 bg-white border border-slate-200 rounded-lg text-[11px] font-black text-slate-700 outline-none focus:border-[#002EFF]'
         >
           <option value=''>All payments</option>
+          <option value='outstanding'>Owes payment this month</option>
+          <option value='expired'>— Plan has ended</option>
+          <option value='due'>— Plan ends this month</option>
+          <option value='part_paid'>— Part-paid (balance owed)</option>
           <option value='verified'>Paid (confirmed payment)</option>
           <option value='unpaid' disabled={!!planFilter}>
             No confirmed payment
@@ -929,6 +973,7 @@ export default function StudentRoster({
                             ID: {p.studentCode}
                           </span>
                         )}
+                        <DuesLine p={p} />
                         </div>
                       </div>
                       <Badge
@@ -1081,6 +1126,7 @@ export default function StudentRoster({
                           ID: {p.studentCode}
                         </span>
                       )}
+                      <DuesLine p={p} />
                     </div>
                   </div>
 
