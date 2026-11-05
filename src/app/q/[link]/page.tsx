@@ -185,6 +185,10 @@ export default function PublicQuizPage() {
   const [lockedCount, setLockedCount] = useState(0)
   const [accessCode, setAccessCode] = useState('')
   const [unlocking, setUnlocking] = useState(false)
+  // A locked test's questions are not loaded when a past taker comes back, so
+  // corrections need them fetched again with the taker's email and code.
+  const [corrAsk, setCorrAsk] = useState(false)
+  const [corrError, setCorrError] = useState('')
   // Everyone's ranking on this quiz, signed-in and via the link together.
   const [board, setBoard] = useState<LeaderboardRow[]>([])
   const [boardLoading, setBoardLoading] = useState(false)
@@ -240,12 +244,27 @@ export default function PublicQuizPage() {
           // Already taken on this device? Show the stored result, no retake.
           try {
             const raw = localStorage.getItem(takenKey)
-            const prior = raw ? (JSON.parse(raw) as { result?: PublicQuizResult; name?: string }) : null
+            const prior = raw
+              ? (JSON.parse(raw) as { result?: PublicQuizResult; name?: string; email?: string; code?: string })
+              : null
             if (prior?.result) {
               setResult(prior.result)
               if (prior.name) setName(prior.name)
+              if (prior.email) setEmail(prior.email)
+              if (prior.code) setAccessCode(prior.code)
               setAlreadyTaken(true)
               setStep('result')
+              // The corrections are built from the questions; fetch them again
+              // with the code this taker already used. If that fails, "View
+              // corrections" asks for the code.
+              if (prior.email && prior.code) {
+                dsaApi.quizzes
+                  .unlockPublic(link, { code: prior.code, email: prior.email, name: prior.name })
+                  .then((q) => {
+                    if (!cancelled) setQuestions(mapQuiz(q as unknown as Record<string, unknown>).questions)
+                  })
+                  .catch(() => {})
+              }
               return
             }
           } catch {
@@ -322,7 +341,12 @@ export default function PublicQuizPage() {
         try {
           localStorage.setItem(
             takenKey,
-            JSON.stringify({ result: res, name: name.trim() }),
+            JSON.stringify({
+              result: res,
+              name: name.trim(),
+              // A locked test needs these to reload its questions for corrections.
+              ...(locked ? { email: email.trim().toLowerCase(), code: accessCode.trim() } : {}),
+            }),
           )
         } catch {
           /* storage unavailable — the backend still de-dupes by email */
@@ -337,7 +361,7 @@ export default function PublicQuizPage() {
       }
       setSubmitting(false)
     },
-    [answers, email, phone, link, name, questions, remaining, submitting, takenKey],
+    [answers, email, phone, link, name, questions, remaining, submitting, takenKey, locked, accessCode],
   )
 
   // Register a "left the quiz" breach; auto-submit once past the limit, else warn.
@@ -493,6 +517,45 @@ export default function PublicQuizPage() {
   // question map + per-subject) — same component the portal quiz uses. Built by
   // joining the loaded questions with the submit breakdown.
   const canShowCorrections = breakdown.length > 0
+
+  const openCorrections = async () => {
+    if (questions.length > 0 || !locked) {
+      setShowCorrections(true)
+      return
+    }
+    if (!email.trim() || !accessCode.trim()) {
+      setCorrAsk(true)
+      return
+    }
+    setUnlocking(true)
+    setCorrError('')
+    try {
+      const q = await dsaApi.quizzes.unlockPublic(link, {
+        code: accessCode.trim(),
+        email: email.trim().toLowerCase(),
+        name: name.trim() || undefined,
+      })
+      setQuestions(mapQuiz(q as unknown as Record<string, unknown>).questions)
+      // Remember them, so the next visit opens corrections straight away.
+      try {
+        const raw = localStorage.getItem(takenKey)
+        const prior = raw ? JSON.parse(raw) : {}
+        localStorage.setItem(
+          takenKey,
+          JSON.stringify({ ...prior, email: email.trim().toLowerCase(), code: accessCode.trim() }),
+        )
+      } catch {
+        /* storage unavailable — they can enter the code again next time */
+      }
+      setCorrAsk(false)
+      setShowCorrections(true)
+    } catch (e) {
+      setCorrAsk(true)
+      setCorrError(e instanceof Error ? e.message : 'That code could not be checked. Try again.')
+    } finally {
+      setUnlocking(false)
+    }
+  }
   const correctionsData: CorrectionsData = {
     quizTitle: title,
     totalScore: result?.totalScore ?? 0,
@@ -978,10 +1041,11 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
             >
               {canShowCorrections && (
                 <button
-                  onClick={() => setShowCorrections(true)}
-                  className='w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-[#002EFF] text-white font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 active:scale-[0.98] transition-all'
+                  onClick={() => void openCorrections()}
+                  disabled={unlocking}
+                  className='w-full flex items-center justify-center gap-2 h-12 rounded-2xl bg-[#002EFF] text-white font-black text-[11px] uppercase tracking-wide hover:bg-blue-700 active:scale-[0.98] transition-all disabled:opacity-60'
                 >
-                  <BookOpenCheck size={15} /> View corrections
+                  <BookOpenCheck size={15} /> {unlocking ? 'Loading corrections…' : 'View corrections'}
                 </button>
               )}
 
@@ -992,6 +1056,39 @@ ${rows ? `<table border="1" cellpadding="8" cellspacing="0" style="border-collap
                 <Download size={15} /> Download report
               </button>
             </div>
+            {corrAsk && (
+              <div className='rounded-2xl bg-white p-4 shadow-sm space-y-3'>
+                <p className='text-[12px] font-bold text-slate-600'>
+                  To see your corrections, enter the email and access code you used for this test.
+                </p>
+                <input
+                  type='email'
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder='you@example.com'
+                  aria-label='Email'
+                  className='w-full h-11 px-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-bold'
+                />
+                <input
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  placeholder='Access code'
+                  aria-label='Access code'
+                  autoCapitalize='characters'
+                  autoComplete='off'
+                  spellCheck={false}
+                  className='w-full h-11 px-3 rounded-xl bg-slate-50 border border-transparent focus:border-[#002EFF]/30 focus:bg-white outline-none text-sm font-black tracking-wider uppercase'
+                />
+                {corrError && <p className='text-[11px] font-bold text-rose-600'>{corrError}</p>}
+                <button
+                  onClick={() => void openCorrections()}
+                  disabled={unlocking || !email.trim() || !accessCode.trim()}
+                  className='w-full h-11 rounded-xl bg-[#002EFF] text-white font-black text-[11px] uppercase tracking-wide disabled:opacity-60'
+                >
+                  {unlocking ? 'Checking…' : 'Show my corrections'}
+                </button>
+              </div>
+            )}
 
             {/* Score + performance analysis */}
             <div className='bg-white rounded-3xl shadow-sm overflow-hidden'>
